@@ -1,0 +1,5 @@
+.secret-panel { padding: 30px; }
+.secret-value { padding: 16px; background: #080b10; border: 1px solid var(--line); border-radius: 11px; word-break: break-all; color: var(--accent); }
+.switch-label { flex-direction: row; align-items: center; }
+.switch-label input { width: auto; }
+.table-action { border: 1px solid var(--line); background: transparent; color: var(--text); border-radius: 8px; padding: 6px 9px; cursor: pointer; }

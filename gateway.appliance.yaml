@@ -1,0 +1,43 @@
+server:
+  port: 4000
+  master_key: ${UBIQUUM_MASTER_KEY}
+  max_request_size_mb: 32
+  max_concurrent: 1000
+
+console:
+  session_ttl: 8h
+  admin_password_sha256: ${UBIQUUM_ADMIN_PASSWORD_SHA256}
+  secure_cookies: false
+
+database:
+  driver: sqlite
+  url: /home/ubiquum/.ubiquum/ubiquum.db
+  batch_write_interval: 5s
+
+router:
+  strategy: latency
+  retries: 2
+  retry_delay: 500ms
+  circuit_breaker:
+    threshold: 3
+    recovery: 30s
+
+guardrail:
+  enabled: true
+  fail_open: false
+  pii:
+    enabled: true
+  secrets:
+    enabled: true
+  injection:
+    enabled: true
+
+pricing:
+  disable_remote_refresh: true
+
+request_log:
+  enabled: false
+
+responses:
+  ttl: 720h
+  cleanup_interval: 1h

@@ -1,0 +1,33 @@
+server:
+  port: 4000
+  master_key: sk-test-master-key
+
+models:
+  - name: gpt-4o
+    provider: azure_openai
+    provider_model: gpt-4o-2024-11-20
+    api_base: https://example.openai.azure.com
+    api_key: test-azure-key
+    api_version: "2024-10-21"
+    drop_params:
+      - stream_options.include_usage
+
+  - name: llama-3-70b
+    provider: openai_compatible
+    provider_model: llama-3.3-70b-versatile
+    api_base: https://api.groq.com/openai/v1
+    api_key: test-groq-key
+
+router:
+  strategy: shuffle
+  retries: 3
+  retry_delay: 5s
+  circuit_breaker:
+    threshold: 3
+    recovery: 60s
+
+webhooks:
+  - url: http://localhost:8000/webhooks
+    events:
+      - spend_tracked
+      - budget_crossed

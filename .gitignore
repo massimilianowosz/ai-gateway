@@ -1,0 +1,44 @@
+# OS
+.DS_Store
+
+# Build
+bin/
+*.out
+*.exe
+*.test
+*.prof
+/gateway
+
+# Config (local)
+gateway.yaml
+ubiquum.db
+gateway.db
+credentials.vault
+credentials.key
+.env
+
+# Runtime
+tmp/
+logs/
+
+# Test data & results
+test/results/
+test/cache/results/
+test/cache/fixtures/
+test/benchmarks/fixtures/
+
+# Docs (generated)
+docs/*.pdf
+docs/*.jpg
+
+# JS artifacts (not used - Go project)
+node_modules/
+package.json
+package-lock.json
+tailwind.config.js
+
+# Coverage
+coverage.html
+
+# Release artifacts
+dist/

@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main, development]
+    tags: ["v*"]
+  pull_request:
+    branches: [main, development]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: latest
+
+      - name: Test
+        run: go test -race -coverprofile=coverage.out ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      # The gate that found ten reachable vulnerabilities, nine of them in the
+      # standard library the binary was compiled with. Nothing else in this
+      # pipeline looks at dependencies.
+      - name: Vulnerabilities
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          "$(go env GOPATH)/bin/govulncheck" ./...
+
+      - name: Build
+        run: CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/ubiquum ./cmd/gateway
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage
+          path: coverage.out
+
+  # Tagged builds publish the GHCR image and the GoReleaser release. This job
+  # and the push trigger above were dropped in an unrelated feature branch,
+  # which silently stopped both — restored here on current action versions.
+  release:
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

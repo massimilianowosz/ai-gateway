@@ -1,0 +1,14 @@
+.git
+.github
+bin
+dist
+tmp
+logs
+*.db
+*.out
+coverage.*
+docs/*.pdf
+docs/*.jpg
+test/results
+test/cache/results
+node_modules

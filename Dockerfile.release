@@ -1,0 +1,14 @@
+FROM alpine:3.20 AS runtime-files
+RUN mkdir -p /home/ubiquum/.ubiquum && chown -R 65532:65532 /home/ubiquum
+
+FROM scratch
+COPY ubiquum /ubiquum
+COPY --from=runtime-files /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=runtime-files --chown=65532:65532 /home/ubiquum /home/ubiquum
+ENV HOME=/home/ubiquum
+ENV UBIQUUM_HOME=/home/ubiquum/.ubiquum
+WORKDIR /home/ubiquum
+USER 65532:65532
+EXPOSE 4000
+ENTRYPOINT ["/ubiquum"]
+CMD ["serve", "-config", "/etc/ubiquum/gateway.yaml"]

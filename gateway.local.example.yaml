@@ -1,0 +1,30 @@
+server:
+  port: 4000
+  master_key: ${UBIQUUM_MASTER_KEY}
+
+console:
+  session_ttl: 8h
+  admin_password_sha256: ${UBIQUUM_ADMIN_PASSWORD_SHA256}
+  vault_path: ./tmp/credentials.vault
+  vault_key_file: ./tmp/credentials.key
+
+database:
+  driver: sqlite
+  url: ./tmp/ubiquum.db
+
+# The echo deployment makes /ready useful during local development without
+# sending data to an external provider. Remove it on an appliance.
+providers:
+  local-echo:
+    type: echo
+
+models:
+  - name: echo-test
+    provider: local-echo
+    provider_model: echo-test
+
+router:
+  strategy: shuffle
+
+pricing:
+  disable_remote_refresh: true

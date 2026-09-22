@@ -1,0 +1,2139 @@
+openapi: 3.1.0
+info:
+  title: Ubiquum Gateway API
+  description: High-performance LLM gateway proxy — OpenAI-compatible API with multi-provider routing, virtual keys, spend tracking, and budget enforcement.
+  version: 0.1.0
+  license:
+    name: AGPL-3.0
+    url: https://www.gnu.org/licenses/agpl-3.0.html
+
+servers:
+  - url: http://localhost:4000
+    description: Local development
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      operationId: health
+      tags: [Operations]
+      responses:
+        "200":
+          description: Gateway is running
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /ready:
+    get:
+      summary: Readiness probe
+      operationId: ready
+      tags: [Operations]
+      responses:
+        "200":
+          description: Gateway is ready (models registered)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ready
+                  models:
+                    type: integer
+                    example: 5
+        "503":
+          description: Not ready (no models)
+
+  /metrics:
+    get:
+      summary: Prometheus metrics
+      operationId: metrics
+      tags: [Operations]
+      responses:
+        "200":
+          description: Metrics in Prometheus text format
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /v1/chat/completions:
+    post:
+      summary: Create chat completion
+      operationId: createChatCompletion
+      tags: [Chat]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatCompletionRequest"
+      responses:
+        "200":
+          description: Successful completion
+          headers:
+            X-Ubiquum-Cost:
+              schema:
+                type: string
+              description: Cost of this request in USD (non-streaming only)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatCompletionResponse"
+            text/event-stream:
+              schema:
+                type: string
+                description: SSE stream of ChatCompletionChunk objects
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "502":
+          $ref: "#/components/responses/UpstreamError"
+
+  /v1/files:
+    post:
+      summary: Upload a file
+      description: |
+        Streams a multipart file directly to the provider selected by
+        `X-Ubiquum-Model`. Ubiquum does not persist file contents; it stores only
+        a tenant-scoped mapping to the provider file identifier.
+      operationId: createFile
+      tags: [Files]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/HiveModel"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, purpose]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                purpose:
+                  type: string
+                  example: user_data
+      responses:
+        "200":
+          description: Provider-owned file metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileObject"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "502":
+          $ref: "#/components/responses/UpstreamError"
+    get:
+      summary: List files
+      operationId: listFiles
+      tags: [Files]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: after
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 10000
+            default: 10000
+        - name: order
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+        - name: purpose
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Tenant-scoped file list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /v1/files/{file_id}:
+    parameters:
+      - $ref: "#/components/parameters/FileID"
+    get:
+      summary: Retrieve file metadata
+      operationId: retrieveFile
+      tags: [Files]
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: File metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileObject"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      summary: Delete a file
+      description: Deletes the provider file and its Ubiquum metadata mapping.
+      operationId: deleteFile
+      tags: [Files]
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: File deletion result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileDeleted"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/UpstreamError"
+
+  /v1/files/{file_id}/content:
+    get:
+      summary: Download file content
+      description: Streams file bytes from the provider without persisting them in Ubiquum.
+      operationId: downloadFile
+      tags: [Files]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/FileID"
+      responses:
+        "200":
+          description: File bytes streamed from the provider
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/UpstreamError"
+
+  /v1/models:
+    get:
+      summary: List available models
+      operationId: listModels
+      tags: [Chat]
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: List of models
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  object:
+                    type: string
+                    example: list
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Model"
+
+  /v1/models/{model}:
+    get:
+      summary: Retrieve model details
+      operationId: getModel
+      tags: [Chat]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: model
+          in: path
+          required: true
+          schema:
+            type: string
+          example: gpt-4o
+      responses:
+        "200":
+          description: Model details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Model"
+        "404":
+          description: Model not found
+
+  /v1/messages:
+    post:
+      summary: Create a message (Anthropic Messages API)
+      description: |
+        Anthropic-native endpoint for Claude Code, Cursor (Anthropic mode), and any Anthropic SDK client.
+        Accepts requests in the Anthropic Messages format and routes them through the gateway.
+      operationId: createMessage
+      tags: [Anthropic]
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnthropicMessageRequest"
+      responses:
+        "200":
+          description: Message response (non-streaming) or SSE stream (streaming)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnthropicMessageResponse"
+            text/event-stream:
+              schema:
+                type: string
+                description: SSE stream of Anthropic events
+        "400":
+          description: Invalid request
+        "404":
+          description: Model not found
+        "429":
+          description: Rate limited
+
+  /v1/responses:
+    post:
+      summary: Create a model response (OpenAI Responses API)
+      description: |
+        OpenAI Responses endpoint for Codex CLI/Desktop and the official SDKs.
+
+        Deployments whose provider speaks Responses natively (OpenAI, Azure
+        OpenAI, ChatGPT Codex) receive the request unchanged, so the full
+        parameter surface — including built-in tools such as `web_search` and
+        `code_interpreter` — is available. Every other provider is served
+        through a Chat Completions translation; built-in tools are rejected
+        with HTTP 400 there rather than silently ignored.
+      operationId: createResponse
+      tags: [Responses]
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [model]
+              properties:
+                model:
+                  type: string
+                input:
+                  description: A string prompt, or a list of typed input items.
+                  oneOf:
+                    - type: string
+                    - type: array
+                      items:
+                        type: object
+                instructions:
+                  type: string
+                stream:
+                  type: boolean
+                background:
+                  type: boolean
+                  description: Run detached and poll GET /v1/responses/{id}.
+                store:
+                  type: boolean
+                  default: true
+                previous_response_id:
+                  type: string
+                conversation:
+                  oneOf:
+                    - type: string
+                    - type: object
+                include:
+                  type: array
+                  items:
+                    type: string
+                metadata:
+                  type: object
+                  additionalProperties:
+                    type: string
+                reasoning:
+                  type: object
+                  properties:
+                    effort:
+                      type: string
+                    summary:
+                      type: string
+                text:
+                  type: object
+                  description: Structured output configuration (text.format).
+                tools:
+                  type: array
+                  items:
+                    type: object
+                tool_choice: {}
+                parallel_tool_calls:
+                  type: boolean
+                max_output_tokens:
+                  type: integer
+                max_tool_calls:
+                  type: integer
+                temperature:
+                  type: number
+                top_p:
+                  type: number
+                top_logprobs:
+                  type: integer
+                truncation:
+                  type: string
+                service_tier:
+                  type: string
+                prompt_cache_key:
+                  type: string
+                safety_identifier:
+                  type: string
+                user:
+                  type: string
+      responses:
+        "200":
+          description: Response object (non-streaming) or SSE stream (streaming)
+          content:
+            application/json:
+              schema:
+                type: object
+            text/event-stream:
+              schema:
+                type: string
+                description: SSE stream of typed Responses events
+        "400":
+          description: Invalid request, or a built-in tool unsupported by the model
+        "403":
+          description: Model not allowed for this key
+        "404":
+          description: Model not found
+        "429":
+          description: Rate limited
+
+  /v1/responses/{response_id}:
+    parameters:
+      - name: response_id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      summary: Retrieve a stored response
+      description: |
+        Served from the gateway's own store. When the turn was produced by a
+        provider with native stateful endpoints, the provider is polled first
+        so background responses reflect their current status.
+
+        With `stream=true` the turn is followed as SSE instead of returned as a
+        single object, which is how a client resumes a background response whose
+        connection dropped: pass the last `sequence_number` it received as
+        `starting_after`.
+      operationId: getResponse
+      tags: [Responses]
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      parameters:
+        - name: stream
+          in: query
+          description: Follow the turn as Server-Sent Events.
+          schema:
+            type: string
+            enum: ["true"]
+        - name: starting_after
+          in: query
+          description: Resume after this sequence number. Requires stream=true.
+          schema:
+            type: integer
+            minimum: 0
+        - name: include
+          in: query
+          description: Forwarded to providers with a native Responses API.
+          schema:
+            type: array
+            items:
+              type: string
+      responses:
+        "200":
+          description: Response object
+          content:
+            application/json:
+              schema:
+                type: object
+        "404":
+          description: Response not found in this tenant scope
+    delete:
+      summary: Delete a stored response
+      operationId: deleteResponse
+      tags: [Responses]
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: Deletion confirmation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  object:
+                    type: string
+                  deleted:
+                    type: boolean
+        "404":
+          description: Response not found in this tenant scope
+
+  /v1/responses/{response_id}/cancel:
+    post:
+      summary: Cancel a background response
+      operationId: cancelResponse
+      tags: [Responses]
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      parameters:
+        - name: response_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Response object with its resulting status
+          content:
+            application/json:
+              schema:
+                type: object
+        "404":
+          description: Response not found in this tenant scope
+
+  /v1/conversations:
+    post:
+      summary: Create a conversation
+      description: |
+        Conversations are held by the gateway, not forwarded, so a thread works
+        identically on every provider — including those with no conversation
+        store of their own — and survives moving between deployments. Pass the
+        id as `conversation` on POST /v1/responses to have a turn read from and
+        append to it.
+      operationId: createConversation
+      tags: [Conversations]
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                metadata:
+                  type: object
+                  additionalProperties:
+                    type: string
+                items:
+                  type: array
+                  description: Responses items to seed the conversation with.
+                  items:
+                    type: object
+      responses:
+        "200":
+          description: Conversation object
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Conversation"
+
+  /v1/conversations/{conversation_id}:
+    parameters:
+      - name: conversation_id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      summary: Retrieve a conversation
+      operationId: getConversation
+      tags: [Conversations]
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: Conversation object
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Conversation"
+        "404":
+          description: Conversation not found in this tenant scope
+    post:
+      summary: Update a conversation's metadata
+      operationId: updateConversation
+      tags: [Conversations]
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                metadata:
+                  type: object
+                  additionalProperties:
+                    type: string
+      responses:
+        "200":
+          description: Updated conversation object
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Conversation"
+        "404":
+          description: Conversation not found in this tenant scope
+    delete:
+      summary: Delete a conversation and its items
+      operationId: deleteConversation
+      tags: [Conversations]
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: Deletion confirmation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  object:
+                    type: string
+                  deleted:
+                    type: boolean
+        "404":
+          description: Conversation not found in this tenant scope
+
+  /v1/conversations/{conversation_id}/items:
+    parameters:
+      - name: conversation_id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      summary: List the items of a conversation
+      operationId: listConversationItems
+      tags: [Conversations]
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: order
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
+        - name: after
+          in: query
+          schema:
+            type: string
+        - name: before
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of conversation items
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationItemList"
+        "404":
+          description: Conversation not found in this tenant scope
+    post:
+      summary: Append items to a conversation
+      operationId: createConversationItems
+      tags: [Conversations]
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items]
+              properties:
+                items:
+                  type: array
+                  items:
+                    type: object
+      responses:
+        "200":
+          description: The items that were added, with the ids they were given
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationItemList"
+        "404":
+          description: Conversation not found in this tenant scope
+
+  /v1/conversations/{conversation_id}/items/{item_id}:
+    parameters:
+      - name: conversation_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: item_id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      summary: Retrieve one conversation item
+      operationId: getConversationItem
+      tags: [Conversations]
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: Conversation item
+          content:
+            application/json:
+              schema:
+                type: object
+        "404":
+          description: Item not found in this conversation
+    delete:
+      summary: Delete one conversation item
+      operationId: deleteConversationItem
+      tags: [Conversations]
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: The conversation the item was removed from
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Conversation"
+        "404":
+          description: Item not found in this conversation
+
+  /v1/responses/{response_id}/input_items:
+    get:
+      summary: List the input items of a stored response
+      operationId: listResponseInputItems
+      tags: [Responses]
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      parameters:
+        - name: response_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: order
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
+        - name: after
+          in: query
+          description: Return the items following this item id.
+          schema:
+            type: string
+        - name: before
+          in: query
+          description: Return the items preceding this item id.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of input items
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  object:
+                    type: string
+                  data:
+                    type: array
+                    items:
+                      type: object
+                  first_id:
+                    type: string
+                  last_id:
+                    type: string
+                  has_more:
+                    type: boolean
+        "404":
+          description: Response not found in this tenant scope
+
+  /v1/embeddings:
+    post:
+      summary: Create embeddings
+      description: Generate vector embeddings for the given input text(s).
+      operationId: createEmbeddings
+      tags: [Embeddings]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [model, input]
+              properties:
+                model:
+                  type: string
+                  example: text-embedding-3-small
+                input:
+                  oneOf:
+                    - type: string
+                    - type: array
+                      items:
+                        type: string
+                  example: "Hello world"
+                encoding_format:
+                  type: string
+                  enum: [float, base64]
+                  default: float
+                dimensions:
+                  type: integer
+                  description: Number of dimensions for the output embedding
+      responses:
+        "200":
+          description: Embeddings response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmbeddingResponse"
+        "400":
+          description: Invalid request or model does not support embeddings
+        "404":
+          description: Model not found
+
+  /v1/completions:
+    post:
+      summary: Create text completion (legacy)
+      operationId: createCompletion
+      tags: [Inference]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [model, prompt]
+              properties:
+                model:
+                  type: string
+                  example: gpt-3.5-turbo-instruct
+                prompt:
+                  oneOf:
+                    - type: string
+                    - type: array
+                      items:
+                        type: string
+                  example: "Say this is a test"
+                max_tokens:
+                  type: integer
+                  example: 16
+                temperature:
+                  type: number
+                  example: 0.7
+                stream:
+                  type: boolean
+                  default: false
+      responses:
+        "200":
+          description: Completion response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompletionResponse"
+        "400":
+          description: Invalid request
+        "404":
+          description: Model not found
+
+  /v1/moderations:
+    post:
+      summary: Create moderation
+      operationId: createModeration
+      tags: [Inference]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [model, input]
+              properties:
+                model:
+                  type: string
+                  example: text-moderation-latest
+                input:
+                  oneOf:
+                    - type: string
+                    - type: array
+                      items:
+                        type: string
+                  example: "I want to kill them"
+      responses:
+        "200":
+          description: Moderation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModerationResponse"
+        "400":
+          description: Invalid request
+        "404":
+          description: Model not found
+
+  /v1/images/generations:
+    post:
+      summary: Create image
+      operationId: createImage
+      tags: [Media]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [model, prompt]
+              properties:
+                model:
+                  type: string
+                  example: dall-e-3
+                prompt:
+                  type: string
+                  example: "A white siamese cat"
+                n:
+                  type: integer
+                  default: 1
+                size:
+                  type: string
+                  example: "1024x1024"
+                response_format:
+                  type: string
+                  enum: [url, b64_json]
+                  default: url
+      responses:
+        "200":
+          description: Generated image(s)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImageResponse"
+        "400":
+          description: Invalid request
+        "404":
+          description: Model not found
+
+  /v1/audio/speech:
+    post:
+      summary: Create speech (TTS)
+      operationId: createSpeech
+      tags: [Media]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [model, input, voice]
+              properties:
+                model:
+                  type: string
+                  example: tts-1
+                input:
+                  type: string
+                  example: "Hello world"
+                voice:
+                  type: string
+                  example: alloy
+                response_format:
+                  type: string
+                  enum: [mp3, opus, aac, flac, wav, pcm]
+                  default: mp3
+                speed:
+                  type: number
+                  minimum: 0.25
+                  maximum: 4.0
+                  default: 1.0
+      responses:
+        "200":
+          description: Audio file
+          content:
+            audio/mpeg:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: Invalid request
+        "404":
+          description: Model not found
+
+  /v1/audio/transcriptions:
+    post:
+      summary: Create transcription (STT)
+      operationId: createTranscription
+      tags: [Media]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, model]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Audio file to transcribe (mp3, mp4, mpeg, mpga, m4a, wav, webm)
+                model:
+                  type: string
+                  example: whisper-1
+                language:
+                  type: string
+                  description: ISO-639-1 language code
+                prompt:
+                  type: string
+                response_format:
+                  type: string
+                  enum: [json, text, srt, verbose_json, vtt]
+                  default: json
+                temperature:
+                  type: number
+      responses:
+        "200":
+          description: Transcription result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TranscriptionResponse"
+        "400":
+          description: Invalid request
+        "404":
+          description: Model not found
+
+  /v1/key/generate:
+    post:
+      summary: Generate a new virtual API key
+      operationId: generateKey
+      tags: [Keys]
+      security:
+        - MasterKey: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateKeyParams"
+      responses:
+        "200":
+          description: Key created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenerateKeyResponse"
+
+  /v1/key/info:
+    get:
+      summary: Get key information
+      operationId: getKeyInfo
+      tags: [Keys]
+      security:
+        - MasterKey: []
+      parameters:
+        - name: key
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Key info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKey"
+
+  /v1/key/update:
+    post:
+      summary: Update a key
+      operationId: updateKey
+      tags: [Keys]
+      security:
+        - MasterKey: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [key, params]
+              properties:
+                key:
+                  type: string
+                params:
+                  $ref: "#/components/schemas/UpdateKeyParams"
+      responses:
+        "200":
+          description: Key updated
+
+  /v1/key/delete:
+    post:
+      summary: Delete a key
+      operationId: deleteKey
+      tags: [Keys]
+      security:
+        - MasterKey: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [key]
+              properties:
+                key:
+                  type: string
+      responses:
+        "200":
+          description: Key deleted
+
+  /v1/key/list:
+    get:
+      summary: List all keys
+      operationId: listKeys
+      tags: [Keys]
+      security:
+        - MasterKey: []
+      parameters:
+        - name: team_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of keys
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  keys:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/APIKey"
+
+  /v1/spend/logs:
+    get:
+      summary: Query spend logs
+      operationId: getSpendLogs
+      tags: [Spend]
+      security:
+        - MasterKey: []
+      parameters:
+        - name: key
+          in: query
+          schema:
+            type: string
+        - name: model
+          in: query
+          schema:
+            type: string
+        - name: team_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Spend records
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  spend_logs:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/SpendRecord"
+
+  /v1/team/create:
+    post:
+      summary: Create a team
+      operationId: createTeam
+      tags: [Teams]
+      security:
+        - MasterKey: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTeamParams"
+      responses:
+        "200":
+          description: Team created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Team"
+
+  /v1/team/list:
+    get:
+      summary: List teams
+      operationId: listTeams
+      tags: [Teams]
+      security:
+        - MasterKey: []
+      responses:
+        "200":
+          description: List of teams
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  teams:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Team"
+
+  /v1/team/info:
+    get:
+      summary: Get team information
+      operationId: getTeam
+      tags: [Teams]
+      security:
+        - MasterKey: []
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Team info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Team"
+
+  /v1/team/update:
+    post:
+      summary: Update a team
+      operationId: updateTeam
+      tags: [Teams]
+      security:
+        - MasterKey: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id, params]
+              properties:
+                id:
+                  type: string
+                params:
+                  $ref: "#/components/schemas/UpdateTeamParams"
+      responses:
+        "200":
+          description: Team updated
+
+  /v1/team/delete:
+    post:
+      summary: Delete a team
+      operationId: deleteTeam
+      tags: [Teams]
+      security:
+        - MasterKey: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id:
+                  type: string
+      responses:
+        "200":
+          description: Team deleted
+
+  /v1/user/create:
+    post:
+      summary: Create a user
+      operationId: createUser
+      tags: [Users]
+      security:
+        - MasterKey: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserParams"
+      responses:
+        "200":
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /v1/user/list:
+    get:
+      summary: List users
+      operationId: listUsers
+      tags: [Users]
+      security:
+        - MasterKey: []
+      parameters:
+        - name: team_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/User"
+
+  /v1/user/info:
+    get:
+      summary: Get user information
+      operationId: getUser
+      tags: [Users]
+      security:
+        - MasterKey: []
+      parameters:
+        - name: id
+          in: query
+          schema:
+            type: string
+        - name: email
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: User info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /v1/user/update:
+    post:
+      summary: Update a user
+      operationId: updateUser
+      tags: [Users]
+      security:
+        - MasterKey: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id, params]
+              properties:
+                id:
+                  type: string
+                params:
+                  $ref: "#/components/schemas/UpdateUserParams"
+      responses:
+        "200":
+          description: User updated
+
+  /v1/user/delete:
+    post:
+      summary: Delete a user
+      operationId: deleteUser
+      tags: [Users]
+      security:
+        - MasterKey: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id:
+                  type: string
+      responses:
+        "200":
+          description: User deleted
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: Virtual API key (sk-ubq-xxx) or master key
+    MasterKey:
+      type: http
+      scheme: bearer
+      description: Master key (admin access only)
+
+  parameters:
+    HiveModel:
+      name: X-Ubiquum-Model
+      in: header
+      required: true
+      description: Model alias used to select the provider deployment that will own the file.
+      schema:
+        type: string
+      example: azure-gpt-4o-mini
+    FileID:
+      name: file_id
+      in: path
+      required: true
+      schema:
+        type: string
+      example: file-mh-8e148fa4915e4723a2f8ae90d26664aa
+
+  schemas:
+    Conversation:
+      type: object
+      properties:
+        id:
+          type: string
+          example: conv_1787476570184281
+        object:
+          type: string
+          example: conversation
+        created_at:
+          type: integer
+          format: int64
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+    ConversationItemList:
+      type: object
+      properties:
+        object:
+          type: string
+          example: list
+        data:
+          type: array
+          items:
+            type: object
+        first_id:
+          type: string
+        last_id:
+          type: string
+        has_more:
+          type: boolean
+    ChatCompletionRequest:
+      type: object
+      additionalProperties: true
+      required: [model, messages]
+      properties:
+        model:
+          type: string
+          example: gpt-4o
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/Message"
+        temperature:
+          type: number
+        max_tokens:
+          type: integer
+        max_completion_tokens:
+          type: integer
+        top_p:
+          type: number
+        stream:
+          type: boolean
+        stream_options:
+          type: object
+          properties:
+            include_usage:
+              type: boolean
+        response_format:
+          type: object
+        tools:
+          type: array
+          items:
+            type: object
+        tool_choice:
+          oneOf:
+            - type: string
+            - type: object
+
+    Message:
+      type: object
+      required: [role, content]
+      properties:
+        role:
+          type: string
+          enum: [system, user, assistant, tool]
+        content:
+          type: string
+        tool_calls:
+          type: array
+          items:
+            type: object
+        tool_call_id:
+          type: string
+
+    ChatCompletionResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        object:
+          type: string
+          example: chat.completion
+        created:
+          type: integer
+        model:
+          type: string
+        choices:
+          type: array
+          items:
+            type: object
+            properties:
+              index:
+                type: integer
+              message:
+                $ref: "#/components/schemas/Message"
+              finish_reason:
+                type: string
+        usage:
+          $ref: "#/components/schemas/Usage"
+
+    Usage:
+      type: object
+      properties:
+        prompt_tokens:
+          type: integer
+        completion_tokens:
+          type: integer
+        total_tokens:
+          type: integer
+
+    Model:
+      type: object
+      properties:
+        id:
+          type: string
+        object:
+          type: string
+          example: model
+        created:
+          type: integer
+        owned_by:
+          type: string
+          example: ubiquum-ai-gateway
+
+    FileObject:
+      type: object
+      required: [id, object, bytes, created_at, filename, purpose, status]
+      properties:
+        id:
+          type: string
+          example: file-mh-8e148fa4915e4723a2f8ae90d26664aa
+        object:
+          type: string
+          const: file
+        bytes:
+          type: integer
+          format: int64
+        created_at:
+          type: integer
+          format: int64
+        expires_at:
+          type: integer
+          format: int64
+        filename:
+          type: string
+        purpose:
+          type: string
+          example: user_data
+        status:
+          type: string
+          enum: [uploaded, processed, error]
+
+    FileList:
+      type: object
+      required: [object, data, has_more]
+      properties:
+        object:
+          type: string
+          const: list
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/FileObject"
+        first_id:
+          type: string
+        last_id:
+          type: string
+        has_more:
+          type: boolean
+
+    FileDeleted:
+      type: object
+      required: [id, object, deleted]
+      properties:
+        id:
+          type: string
+        object:
+          type: string
+          const: file
+        deleted:
+          type: boolean
+
+    APIKey:
+      type: object
+      properties:
+        id:
+          type: string
+        key_prefix:
+          type: string
+        name:
+          type: string
+        team_id:
+          type: string
+        budget:
+          type: number
+        spend:
+          type: number
+        rate_limit:
+          type: integer
+          description: Requests per minute (0 = unlimited)
+        models:
+          type: array
+          items:
+            type: string
+          description: Allowed models (empty = all)
+        active:
+          type: boolean
+        expires_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+
+    CreateKeyParams:
+      type: object
+      properties:
+        name:
+          type: string
+        team_id:
+          type: string
+        budget:
+          type: number
+        rate_limit:
+          type: integer
+        models:
+          type: array
+          items:
+            type: string
+        expires_at:
+          type: string
+          format: date-time
+
+    UpdateKeyParams:
+      type: object
+      properties:
+        name:
+          type: string
+        budget:
+          type: number
+        rate_limit:
+          type: integer
+        models:
+          type: array
+          items:
+            type: string
+        active:
+          type: boolean
+        expires_at:
+          type: string
+          format: date-time
+
+    GenerateKeyResponse:
+      type: object
+      properties:
+        key:
+          type: string
+          description: Full API key (only shown once)
+        key_prefix:
+          type: string
+        id:
+          type: string
+        name:
+          type: string
+
+    SpendRecord:
+      type: object
+      properties:
+        id:
+          type: string
+        key_prefix:
+          type: string
+        team_id:
+          type: string
+        model:
+          type: string
+        provider:
+          type: string
+        prompt_tokens:
+          type: integer
+        completion_tokens:
+          type: integer
+        total_tokens:
+          type: integer
+        cost:
+          type: number
+        duration_ms:
+          type: integer
+        status:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+
+    Team:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        budget:
+          type: number
+        spend:
+          type: number
+        active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateTeamParams:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        budget:
+          type: number
+        metadata:
+          type: string
+
+    UpdateTeamParams:
+      type: object
+      properties:
+        name:
+          type: string
+        budget:
+          type: number
+        metadata:
+          type: string
+        active:
+          type: boolean
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        name:
+          type: string
+        team_id:
+          type: string
+        role:
+          type: string
+          enum: [admin, member]
+        active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateUserParams:
+      type: object
+      required: [email, team_id]
+      properties:
+        email:
+          type: string
+        name:
+          type: string
+        team_id:
+          type: string
+        role:
+          type: string
+          enum: [admin, member]
+
+    UpdateUserParams:
+      type: object
+      properties:
+        name:
+          type: string
+        team_id:
+          type: string
+        role:
+          type: string
+          enum: [admin, member]
+        active:
+          type: boolean
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            message:
+              type: string
+            type:
+              type: string
+            code:
+              type: string
+
+    AnthropicMessageRequest:
+      type: object
+      required: [model, messages, max_tokens]
+      properties:
+        model:
+          type: string
+          example: claude-3-5-sonnet
+        messages:
+          type: array
+          items:
+            type: object
+            properties:
+              role:
+                type: string
+                enum: [user, assistant]
+              content:
+                oneOf:
+                  - type: string
+                  - type: array
+                    items:
+                      type: object
+        system:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: object
+        max_tokens:
+          type: integer
+          example: 1024
+        temperature:
+          type: number
+        top_p:
+          type: number
+        stop_sequences:
+          type: array
+          items:
+            type: string
+        stream:
+          type: boolean
+          default: false
+        tools:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              description:
+                type: string
+              input_schema:
+                type: object
+
+    AnthropicMessageResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          example: msg_01XFDUDYJgAACzvnptvVoYEL
+        type:
+          type: string
+          example: message
+        role:
+          type: string
+          example: assistant
+        content:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                enum: [text, tool_use]
+              text:
+                type: string
+              id:
+                type: string
+              name:
+                type: string
+              input:
+                type: object
+        model:
+          type: string
+        stop_reason:
+          type: string
+          enum: [end_turn, max_tokens, tool_use, stop_sequence]
+        usage:
+          type: object
+          properties:
+            input_tokens:
+              type: integer
+            output_tokens:
+              type: integer
+
+    EmbeddingResponse:
+      type: object
+      properties:
+        object:
+          type: string
+          example: list
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              object:
+                type: string
+                example: embedding
+              index:
+                type: integer
+              embedding:
+                type: array
+                items:
+                  type: number
+        model:
+          type: string
+        usage:
+          type: object
+          properties:
+            prompt_tokens:
+              type: integer
+            total_tokens:
+              type: integer
+
+    CompletionResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        object:
+          type: string
+          example: text_completion
+        created:
+          type: integer
+        model:
+          type: string
+        choices:
+          type: array
+          items:
+            type: object
+            properties:
+              text:
+                type: string
+              index:
+                type: integer
+              finish_reason:
+                type: string
+                enum: [stop, length]
+        usage:
+          type: object
+          properties:
+            prompt_tokens:
+              type: integer
+            completion_tokens:
+              type: integer
+            total_tokens:
+              type: integer
+
+    ModerationResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        model:
+          type: string
+        results:
+          type: array
+          items:
+            type: object
+            properties:
+              flagged:
+                type: boolean
+              categories:
+                type: object
+                additionalProperties:
+                  type: boolean
+              category_scores:
+                type: object
+                additionalProperties:
+                  type: number
+
+    ImageResponse:
+      type: object
+      properties:
+        created:
+          type: integer
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              url:
+                type: string
+              b64_json:
+                type: string
+              revised_prompt:
+                type: string
+
+    TranscriptionResponse:
+      type: object
+      properties:
+        text:
+          type: string
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unauthorized:
+      description: Missing or invalid API key
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Forbidden:
+      description: Access denied (model not allowed for this key)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    RateLimited:
+      description: Rate limit or budget exceeded
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    UpstreamError:
+      description: Upstream provider error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: Resource not found in the authenticated tenant scope
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"

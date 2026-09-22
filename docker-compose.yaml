@@ -1,0 +1,27 @@
+services:
+  gateway:
+    build: .
+    ports:
+      - "4000:4000"
+    environment:
+      UBIQUUM_MASTER_KEY: ${UBIQUUM_MASTER_KEY}
+      UBIQUUM_ADMIN_PASSWORD_SHA256: ${UBIQUUM_ADMIN_PASSWORD_SHA256:-}
+    volumes:
+      - ./gateway.appliance.yaml:/etc/ubiquum/gateway.yaml:ro
+      - ubiquum-data:/home/ubiquum/.ubiquum
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/ubiquum", "status", "--url", "http://127.0.0.1:4000"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  ubiquum-data:

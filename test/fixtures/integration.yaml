@@ -1,0 +1,82 @@
+# Integration test config for ubiquum-ai-gateway.
+# Requires env vars from the ubiquum .env file.
+# Usage: source ../ubiquum/.env && go run cmd/gateway/main.go -config test/fixtures/integration.yaml
+
+server:
+  port: 4111
+  master_key: "test-master-key-integration"
+  max_request_size_mb: 32
+
+models:
+  # Azure OpenAI
+  - name: gpt-4o
+    provider: azure_openai
+    provider_model: gpt-4o
+    api_base: ${AZURE_OPENAI_API_BASE}
+    api_key: ${AZURE_OPENAI_API_KEY}
+    api_version: ${AZURE_OPENAI_API_VERSION}
+
+  - name: gpt-4o-mini
+    provider: azure_openai
+    provider_model: gpt-4o-mini
+    api_base: ${AZURE_OPENAI_API_BASE}
+    api_key: ${AZURE_OPENAI_API_KEY}
+    api_version: ${AZURE_OPENAI_API_VERSION}
+
+  # Second deployment for load balancing test
+  - name: gpt-4o
+    provider: azure_openai
+    provider_model: gpt-4o
+    api_base: ${AZURE_OPENAI_API_BASE}
+    api_key: ${AZURE_OPENAI_API_KEY}
+    api_version: ${AZURE_OPENAI_API_VERSION}
+
+  # Vertex AI - Gemini
+  - name: vertex-gemini-2-5-flash
+    provider: vertex
+    provider_model: gemini-2.5-flash
+    project: ${VERTEXAI_PROJECT}
+    location: ${VERTEXAI_LOCATION}
+    api_key: ${GOOGLE_APPLICATION_CREDENTIALS}
+
+  # Vertex AI - Claude (partner model via rawPredict)
+  - name: vertex-claude-sonnet-4-5
+    provider: vertex
+    provider_model: claude-sonnet-4-5
+    project: ${VERTEXAI_PROJECT}
+    location: ${VERTEXAI_LOCATION}
+    api_key: ${GOOGLE_APPLICATION_CREDENTIALS}
+
+  # AWS Bedrock - Claude (bearer token auth)
+  - name: bedrock-claude-haiku
+    provider: bedrock
+    provider_model: eu.anthropic.claude-haiku-4-5-20251001-v1:0
+    region: eu-west-1
+    api_key: ${AWS_BEARER_TOKEN_BEDROCK}
+
+  # AWS Bedrock - Nova
+  - name: bedrock-nova-lite
+    provider: bedrock
+    provider_model: eu.amazon.nova-2-lite-v1:0
+    region: eu-west-1
+    api_key: ${AWS_BEARER_TOKEN_BEDROCK}
+
+  # Anthropic Direct
+  - name: claude-sonnet
+    provider: anthropic
+    provider_model: claude-sonnet-4-20250514
+    api_key: ${ANTHROPIC_API_KEY}
+
+  # Google AI Studio (Gemini direct)
+  - name: gemini-flash
+    provider: google_ai
+    provider_model: gemini-2.0-flash
+    api_key: ${GEMINI_API_KEY}
+
+router:
+  strategy: shuffle
+  retries: 2
+  retry_delay: 2s
+  circuit_breaker:
+    threshold: 3
+    recovery: 30s

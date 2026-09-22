@@ -1,0 +1,36 @@
+version: "2"
+
+linters:
+  enable:
+    - errcheck
+    - staticcheck
+    - govet
+    - unused
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - errcheck
+      - path: internal/cli/
+        linters:
+          - errcheck
+      - path: internal/provider/vertex/vertex\.go
+        linters:
+          - staticcheck
+        text: "SA1019"
+      - text: "Error return value of .+(Close|Flush|Remove).*is not checked"
+        linters:
+          - errcheck
+      - text: "Error return value of `fmt\\.Fprint"
+        linters:
+          - errcheck
+  settings:
+    errcheck:
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - (io.Closer).Close
+        - (*net/http.Response).Body.Close
+        - (*os.File).Close
+        - os.Remove

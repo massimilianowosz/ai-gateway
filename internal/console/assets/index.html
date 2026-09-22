@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Ubiquum AI Gateway</title>
+  <link rel="stylesheet" href="/console/styles.css">
+  <link rel="stylesheet" href="/console/extras.css">
+</head>
+<body>
+  <section id="login" class="login-shell hidden">
+    <div class="login-card">
+      <div class="brand-mark">U</div>
+      <p class="eyebrow">SECURE AI EGRESS</p>
+      <h1>Ubiquum AI Gateway</h1>
+      <p class="muted">Sign in to manage this appliance.</p>
+      <form id="login-form">
+        <label>Administrator password<input id="password" type="password" autocomplete="current-password" required autofocus></label>
+        <button type="submit" class="primary">Open console</button>
+        <p id="login-error" class="error"></p>
+      </form>
+    </div>
+  </section>
+
+  <div id="app" class="app-shell hidden">
+    <aside>
+      <div class="brand"><div class="brand-mark small">U</div><div><strong>Ubiquum</strong><span>AI Gateway</span></div></div>
+      <nav>
+        <button data-page="overview" class="active"><span>⌁</span>Overview</button>
+        <button data-page="connections"><span>◇</span>AI connections</button>
+        <button data-page="agents"><span>◎</span>Agents & apps</button>
+        <button data-page="policies"><span>◫</span>Policies & budgets</button>
+        <button data-page="activity"><span>≋</span>Activity</button>
+        <button data-page="system"><span>⚙</span>System</button>
+      </nav>
+      <div class="sidebar-foot"><span class="status-dot"></span>Enforcement active<button id="logout">Sign out</button></div>
+    </aside>
+
+    <main>
+      <header><div><p class="eyebrow">LOCAL APPLIANCE</p><h1 id="page-title">Overview</h1></div><div class="health-pill"><span class="status-dot"></span><span id="health-text">Checking gateway</span></div></header>
+      <section id="content" aria-live="polite"></section>
+    </main>
+  </div>
+
+  <dialog id="connection-dialog">
+    <form id="connection-form" method="dialog">
+      <div class="dialog-head"><div><p class="eyebrow">NEW BYOK CONNECTION</p><h2>Connect an AI provider</h2></div><button type="button" class="icon-button" data-close>×</button></div>
+      <div class="form-grid">
+        <label>Display name<input name="name" placeholder="Production OpenAI" required></label>
+        <label>Provider<select name="provider_type" required><option value="openai">OpenAI</option><option value="anthropic">Anthropic</option><option value="azure_openai">Azure OpenAI</option><option value="google_ai">Google AI</option><option value="bedrock">AWS Bedrock</option><option value="openai_compatible">OpenAI compatible</option></select></label>
+        <label class="wide">API endpoint<input name="api_base" placeholder="https://api.openai.com/v1"></label>
+        <label class="wide">API key<input name="api_key" type="password" autocomplete="off" required></label>
+        <label>Region<input name="region" placeholder="eu-west-1"></label>
+        <label>API version<input name="api_version" placeholder="2024-10-21"></label>
+        <label class="wide">Models <span>one per line: public-name = provider-name</span><textarea name="models" rows="5" placeholder="gpt-4o = gpt-4o&#10;gpt-4o-mini = gpt-4o-mini" required></textarea></label>
+      </div>
+      <p id="connection-error" class="error"></p>
+      <div class="dialog-actions"><button type="button" data-close>Cancel</button><button type="submit" class="primary">Save encrypted connection</button></div>
+    </form>
+  </dialog>
+  <dialog id="identity-dialog">
+    <form id="identity-form" method="dialog">
+      <div class="dialog-head"><div><p class="eyebrow">NEW RUNTIME IDENTITY</p><h2>Authorize an agent or application</h2></div><button type="button" class="icon-button" data-close>×</button></div>
+      <div class="form-grid">
+        <label class="wide">Name<input name="name" placeholder="Support agent — production" required></label>
+        <label>Hard budget (USD)<input name="budget" type="number" min="0" step="0.01" value="25"></label>
+        <label>Rate limit (RPM)<input name="rate_limit" type="number" min="0" step="1" value="60"></label>
+        <label class="wide">Allowed models <span>comma separated; empty allows every public model</span><input name="models" placeholder="gpt-4o, claude-sonnet"></label>
+      </div>
+      <p id="identity-error" class="error"></p>
+      <div class="dialog-actions"><button type="button" data-close>Cancel</button><button type="submit" class="primary">Create identity</button></div>
+    </form>
+  </dialog>
+  <dialog id="secret-dialog">
+    <div class="secret-panel"><p class="eyebrow">SHOWN ONCE</p><h2>Runtime credential created</h2><p class="muted">Copy this key now. Only its hash is retained by the gateway.</p><div id="new-secret" class="secret-value code"></div><div class="dialog-actions"><button id="copy-secret" class="primary">Copy key</button><button data-close>Done</button></div></div>
+  </dialog>
+  <dialog id="budget-dialog">
+    <form id="budget-form" method="dialog">
+      <div class="dialog-head"><div><p class="eyebrow">ENFORCEMENT POLICY</p><h2>Update budget and access</h2></div><button type="button" class="icon-button" data-close>×</button></div>
+      <input name="key" type="hidden">
+      <div class="form-grid"><label>Hard budget (USD)<input name="budget" type="number" min="0" step="0.01"></label><label>Rate limit (RPM)<input name="rate_limit" type="number" min="0" step="1"></label><label class="wide">Allowed models <span>comma separated</span><input name="models"></label><label class="wide switch-label"><input name="active" type="checkbox"> Identity enabled</label></div>
+      <p id="budget-error" class="error"></p><div class="dialog-actions"><button type="button" data-close>Cancel</button><button type="submit" class="primary">Apply policy</button></div>
+    </form>
+  </dialog>
+  <script src="/console/app.js" defer></script>
+</body>
+</html>
