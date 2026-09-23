@@ -69,6 +69,9 @@ func applyDefaults(cfg *Config) {
 	if cfg.Server.UpstreamTokenForwarding.Header == "" {
 		cfg.Server.UpstreamTokenForwarding.Header = "X-Ubiquum-Upstream-Authorization"
 	}
+	if cfg.Server.UpstreamTokenForwarding.ProviderHeader == "" {
+		cfg.Server.UpstreamTokenForwarding.ProviderHeader = "X-Ubiquum-Upstream-Provider"
+	}
 	if cfg.Console.SessionTTL <= 0 {
 		cfg.Console.SessionTTL = 8 * time.Hour
 	}

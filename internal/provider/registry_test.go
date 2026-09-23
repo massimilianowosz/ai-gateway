@@ -66,6 +66,22 @@ func TestRegistry_ListModels(t *testing.T) {
 	assert.Equal(t, []string{"gpt-4o", "claude"}, names)
 }
 
+func TestRegistry_ListConsoleModels_OmitsPresentationHiddenModelsOnly(t *testing.T) {
+	models := []config.ModelConfig{
+		{Name: "public-model", Provider: "openai"},
+		{Name: "oauth-model", Provider: "anthropic", ConsoleHidden: true},
+	}
+	reg, err := NewRegistryWithAliases(models, map[string]string{
+		"oauth-alias": "oauth-model",
+	}, &mockFactory{})
+	require.NoError(t, err)
+
+	assert.ElementsMatch(t, []string{"public-model", "oauth-alias"}, reg.ListModels())
+	assert.Equal(t, []string{"public-model"}, reg.ListConsoleModels())
+	_, err = reg.GetDeployment("oauth-model")
+	assert.NoError(t, err, "console visibility must not affect routing")
+}
+
 func TestRegistry_MultipleDeployments(t *testing.T) {
 	models := []config.ModelConfig{
 		{Name: "gpt-4o", Provider: "azure_openai", ProviderModel: "gpt-4o"},

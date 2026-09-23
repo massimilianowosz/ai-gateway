@@ -457,6 +457,7 @@ func NewPassThroughMiddleware() *Middleware {
 type UpstreamTokenForwardingOptions struct {
 	Enabled          bool
 	Header           string
+	ProviderHeader   string
 	AccountIDHeader  string
 	AllowedProviders []string
 }
@@ -469,6 +470,10 @@ func NewUpstreamTokenForwardingMiddleware(opts UpstreamTokenForwardingOptions) f
 	headerName := strings.TrimSpace(opts.Header)
 	if headerName == "" {
 		headerName = defaultUpstreamTokenHeader
+	}
+	providerHeaderName := strings.TrimSpace(opts.ProviderHeader)
+	if providerHeaderName == "" {
+		providerHeaderName = upstreamProviderHeader
 	}
 	accountIDHeaderName := strings.TrimSpace(opts.AccountIDHeader)
 	if accountIDHeaderName == "" {
@@ -509,7 +514,8 @@ func NewUpstreamTokenForwardingMiddleware(opts UpstreamTokenForwardingOptions) f
 				return
 			}
 
-			providerName := strings.ToLower(strings.TrimSpace(r.Header.Get(upstreamProviderHeader)))
+			providerName := strings.ToLower(strings.TrimSpace(r.Header.Get(providerHeaderName)))
+			r.Header.Del(providerHeaderName)
 			if providerName == "" {
 				writeAuthStatusError(w, http.StatusBadRequest, "upstream provider header is required")
 				return

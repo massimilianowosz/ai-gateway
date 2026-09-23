@@ -74,6 +74,7 @@ func (m *Manager) Register(mux *http.ServeMux, requireAdmin func(http.Handler) h
 	mux.HandleFunc("POST /console/api/session", m.login)
 	mux.HandleFunc("GET /console/api/session", m.sessionInfo)
 	mux.HandleFunc("DELETE /console/api/session", m.logout)
+	mux.Handle("GET /console/api/models", requireAdmin(http.HandlerFunc(m.listModels)))
 	mux.Handle("GET /console/api/connections", requireAdmin(http.HandlerFunc(m.listConnections)))
 	mux.Handle("POST /console/api/connections", requireAdmin(http.HandlerFunc(m.createConnection)))
 	mux.Handle("DELETE /console/api/connections/{id}", requireAdmin(http.HandlerFunc(m.deleteConnection)))
@@ -135,6 +136,14 @@ func (m *Manager) sessionInfo(w http.ResponseWriter, r *http.Request) {
 func (m *Manager) logout(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Path: "/", HttpOnly: true, MaxAge: -1, SameSite: http.SameSiteStrictMode})
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (m *Manager) listModels(w http.ResponseWriter, _ *http.Request) {
+	models := []string{}
+	if m.registry != nil {
+		models = m.registry.ListConsoleModels()
+	}
+	writeConsoleJSON(w, http.StatusOK, map[string]any{"models": models})
 }
 
 func (m *Manager) listConnections(w http.ResponseWriter, _ *http.Request) {

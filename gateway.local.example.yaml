@@ -1,6 +1,11 @@
 server:
   port: 4000
   master_key: ${UBIQUUM_MASTER_KEY}
+  upstream_token_forwarding:
+    enabled: true
+    allowed_providers: [anthropic]
+    header: ${UBIQUUM_UPSTREAM_AUTH_HEADER}
+    provider_header: ${UBIQUUM_UPSTREAM_PROVIDER_HEADER}
 
 console:
   session_ttl: 8h
@@ -17,11 +22,79 @@ database:
 providers:
   local-echo:
     type: echo
+  anthropic-oauth:
+    type: anthropic
 
 models:
   - name: echo-test
     provider: local-echo
     provider_model: echo-test
+  - name: claude-code-opus-5
+    provider: anthropic-oauth
+    provider_model: claude-opus-5
+    auth_mode: oauth_passthrough
+    billing_mode: flat
+    console_hidden: true
+  - name: claude-code-fable-5-1
+    provider: anthropic-oauth
+    provider_model: claude-fable-5-1
+    auth_mode: oauth_passthrough
+    billing_mode: flat
+    console_hidden: true
+  - name: claude-code-fable-5
+    provider: anthropic-oauth
+    provider_model: claude-fable-5
+    auth_mode: oauth_passthrough
+    billing_mode: flat
+    console_hidden: true
+  - name: claude-code-sonnet-5
+    provider: anthropic-oauth
+    provider_model: claude-sonnet-5
+    auth_mode: oauth_passthrough
+    billing_mode: flat
+    console_hidden: true
+  - name: claude-code-opus-4-8
+    provider: anthropic-oauth
+    provider_model: claude-opus-4-8
+    auth_mode: oauth_passthrough
+    billing_mode: flat
+    console_hidden: true
+  - name: claude-code-opus-4-7
+    provider: anthropic-oauth
+    provider_model: claude-opus-4-7
+    auth_mode: oauth_passthrough
+    billing_mode: flat
+    console_hidden: true
+  - name: claude-code-opus-4-6
+    provider: anthropic-oauth
+    provider_model: claude-opus-4-6
+    auth_mode: oauth_passthrough
+    billing_mode: flat
+    console_hidden: true
+  - name: claude-code-sonnet-4-6
+    provider: anthropic-oauth
+    provider_model: claude-sonnet-4-6
+    auth_mode: oauth_passthrough
+    billing_mode: flat
+    console_hidden: true
+  - name: claude-code-opus-4-5
+    provider: anthropic-oauth
+    provider_model: claude-opus-4-5
+    auth_mode: oauth_passthrough
+    billing_mode: flat
+    console_hidden: true
+  - name: claude-code-sonnet-4-5
+    provider: anthropic-oauth
+    provider_model: claude-sonnet-4-5
+    auth_mode: oauth_passthrough
+    billing_mode: flat
+    console_hidden: true
+  - name: claude-code-haiku-4-5
+    provider: anthropic-oauth
+    provider_model: claude-haiku-4-5
+    auth_mode: oauth_passthrough
+    billing_mode: flat
+    console_hidden: true
 
 router:
   strategy: shuffle

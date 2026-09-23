@@ -172,6 +172,7 @@ type ServerConfig struct {
 type UpstreamTokenForwardingConfig struct {
 	Enabled          bool     `yaml:"enabled"`
 	Header           string   `yaml:"header"`
+	ProviderHeader   string   `yaml:"provider_header"`
 	AccountIDHeader  string   `yaml:"account_id_header"`
 	AllowedProviders []string `yaml:"allowed_providers"`
 }
@@ -214,6 +215,7 @@ type ModelConfig struct {
 	DropParams           []string `yaml:"drop_params"`
 	IsEU                 bool     `yaml:"is_eu,omitempty"`                   // Whether this model runs in EU region
 	Restricted           bool     `yaml:"restricted,omitempty"`              // Hidden from /v1/models unless tenant has it in allowed_models
+	ConsoleHidden        bool     `yaml:"console_hidden,omitempty"`          // Callable through the data plane but omitted from the appliance console
 	InputCostPerMillion  float64  `yaml:"input_cost_per_million,omitempty"`  // Cost per 1M input tokens (e.g. 5.0 = $5/1M). Takes priority over input_cost_per_token.
 	OutputCostPerMillion float64  `yaml:"output_cost_per_million,omitempty"` // Cost per 1M output tokens. Takes priority over output_cost_per_token.
 	InputCostPerToken    float64  `yaml:"input_cost_per_token,omitempty"`    // Legacy: cost per single input token. Use input_cost_per_million instead.

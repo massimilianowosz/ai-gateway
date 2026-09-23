@@ -261,6 +261,29 @@ func TestUpstreamTokenForwarding_EnabledScopesTokenToAllowedProvider(t *testing.
 	assert.True(t, called)
 }
 
+func TestUpstreamTokenForwarding_UsesConfiguredProviderHeader(t *testing.T) {
+	mw := NewUpstreamTokenForwardingMiddleware(UpstreamTokenForwardingOptions{
+		Enabled:          true,
+		Header:           "X-Bridge-Authorization",
+		ProviderHeader:   "X-Bridge-Provider",
+		AllowedProviders: []string{"anthropic"},
+	})
+	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "oauth-token", UpstreamTokenForProvider(r.Context(), "anthropic"))
+		assert.Empty(t, r.Header.Get("X-Bridge-Authorization"))
+		assert.Empty(t, r.Header.Get("X-Bridge-Provider"))
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	req.Header.Set("X-Bridge-Authorization", "Bearer oauth-token")
+	req.Header.Set("X-Bridge-Provider", "anthropic")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
 func TestUpstreamTokenForwarding_RejectsDisallowedProvider(t *testing.T) {
 	mw := NewUpstreamTokenForwardingMiddleware(UpstreamTokenForwardingOptions{
 		Enabled:          true,

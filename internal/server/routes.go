@@ -51,6 +51,7 @@ func RegisterRoutes(s *Server, registry *provider.Registry, rt *router.Router, a
 	upstreamTokenForwarding := auth.NewUpstreamTokenForwardingMiddleware(auth.UpstreamTokenForwardingOptions{
 		Enabled:          s.cfg.Server.UpstreamTokenForwarding.Enabled,
 		Header:           s.cfg.Server.UpstreamTokenForwarding.Header,
+		ProviderHeader:   s.cfg.Server.UpstreamTokenForwarding.ProviderHeader,
 		AccountIDHeader:  s.cfg.Server.UpstreamTokenForwarding.AccountIDHeader,
 		AllowedProviders: s.cfg.Server.UpstreamTokenForwarding.AllowedProviders,
 	})

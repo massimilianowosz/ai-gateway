@@ -15,6 +15,7 @@ type Registry struct {
 	deployments      map[string][]*Deployment // model name → deployments
 	allModels        []string                 // ordered list of unique model names
 	restrictedModels map[string]bool          // models hidden from listing unless explicitly allowed
+	consoleHidden    map[string]bool          // data-plane models omitted from the appliance console
 	aliases          map[string]string        // public alias → configured model name
 	// upstream provider name → the provider's own model name → our name, for
 	// deployments the caller's own subscription answers.
@@ -35,6 +36,7 @@ func NewRegistryWithAliases(models []config.ModelConfig, aliases map[string]stri
 	r := &Registry{
 		deployments:      make(map[string][]*Deployment),
 		restrictedModels: make(map[string]bool),
+		consoleHidden:    make(map[string]bool),
 		aliases:          make(map[string]string, len(aliases)),
 		upstreamAliases:  make(map[string]map[string]string),
 	}
@@ -101,6 +103,9 @@ func NewRegistryWithAliases(models []config.ModelConfig, aliases map[string]stri
 			r.allModels = append(r.allModels, m.Name)
 			if m.Restricted {
 				r.restrictedModels[m.Name] = true
+			}
+			if m.ConsoleHidden {
+				r.consoleHidden[m.Name] = true
 			}
 		}
 	}
@@ -259,6 +264,23 @@ func (r *Registry) ListModels() []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.listedModelsLocked()
+}
+
+// ListConsoleModels returns the models operators should see in the appliance
+// UI. Hidden models remain registered, routable and visible on the data-plane
+// catalog; this is presentation metadata, not an authorization mechanism.
+func (r *Registry) ListConsoleModels() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	listed := r.listedModelsLocked()
+	result := make([]string, 0, len(listed))
+	for _, model := range listed {
+		if !r.consoleHidden[r.canonicalModelLocked(model)] {
+			result = append(result, model)
+		}
+	}
+	return result
 }
 
 // Aliases returns a copy of the public alias → configured model mapping.
