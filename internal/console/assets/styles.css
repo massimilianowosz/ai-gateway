@@ -7,6 +7,44 @@
    component rule.
    ========================================================================== */
 
+/* --- Fonts ------------------------------------------------------------------
+   Self-hosted rather than linked from Google Fonts: an appliance console must
+   render identically with no route out to the internet, and the brand name is
+   ASCII-only, so the latin subset is all that is ever needed.
+   ========================================================================== */
+
+@font-face {
+  font-family: "Saira Semi Condensed";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/console/fonts/saira-semi-condensed-400.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Saira Semi Condensed";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/console/fonts/saira-semi-condensed-500.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Saira Semi Condensed";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/console/fonts/saira-semi-condensed-600.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Saira Semi Condensed";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/console/fonts/saira-semi-condensed-700.woff2") format("woff2");
+}
+
 /* --- Tokens --------------------------------------------------------------- */
 
 :root {
@@ -80,7 +118,7 @@
   --fast: 120ms var(--ease);
   --med: 220ms var(--ease);
 
-  --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+  --font: "Saira Semi Condensed", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     Helvetica, Arial, sans-serif;
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 
@@ -274,25 +312,30 @@ table {
   border-radius: var(--r-xl);
   padding: var(--s-10) var(--s-8);
   box-shadow: var(--shadow-lg);
+  text-align: center;
 }
 
 .login-mark {
-  width: 40px;
-  height: 40px;
+  width: 150px;
+  height: 150px;
   display: grid;
   place-items: center;
   border-radius: var(--r-md);
-  background: var(--accent);
-  color: #fff;
-  font-weight: 700;
-  letter-spacing: -0.04em;
-  margin-bottom: var(--s-6);
+  overflow: hidden;
+  margin: 0 auto var(--s-6);
+}
+
+.login-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .login-card h1 {
-  font-size: 22px;
-  font-weight: 620;
-  letter-spacing: -0.025em;
+  font-family: "Saira Semi Condensed", var(--font);
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
   margin: var(--s-2) 0 var(--s-1);
 }
 
@@ -510,24 +553,27 @@ select {
 }
 
 .brand-mark {
-  width: 30px;
-  height: 30px;
+  width: 48px;
+  height: 48px;
   flex: none;
   display: grid;
   place-items: center;
   border-radius: 8px;
-  background: var(--accent);
-  color: #fff;
-  font-weight: 700;
-  font-size: 13px;
-  letter-spacing: -0.04em;
+  overflow: hidden;
+}
+
+.brand-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .brand strong {
   display: block;
-  font-size: 14px;
+  font-family: "Saira Semi Condensed", var(--font);
+  font-size: 15px;
   font-weight: 600;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
 }
 
 .brand span {

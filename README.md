@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="internal/console/assets/ai-gateway-logo.png" alt="Ubiquum AI Gateway" width="120">
+</p>
+
 # Ubiquum AI Gateway
 
 Ubiquum AI Gateway is an appliance-oriented AI egress control point. A firewall

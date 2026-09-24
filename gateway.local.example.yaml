@@ -137,11 +137,12 @@ pricing:
 #   retention: 720h
 #   cleanup_interval: 1h
 #   # Labels the task type from the opening request when files and tools do
-#   # not settle it. Gets the request with secrets and PII masked; keep it local.
+#   # not settle it. Optional: off while JEV_ENDPOINT_URL is unset. Gets the
+#   # request with secrets and PII masked; keep it local.
 #   task_classifier:
-#     url: http://127.0.0.1:8000/v1/systemone
-#     api_key: ${HIVEDECIDE_API_KEY}
-#     model: spark-4b
+#     url: ${JEV_ENDPOINT_URL:-}            # SYSTEMONE, e.g. http://127.0.0.1:8000/v1/systemone
+#     api_key: ${JEV_API_KEY:-}
+#     model: gemma4-e4b
 #     min_confidence: 0.5
 
   # Codex pass-through, against ChatGPT's backend rather than api.openai.com.

@@ -31,17 +31,14 @@ import urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 CORPUS = os.path.join(HERE, "sensitive_corpus.json")
-ENDPOINT = os.environ.get("HIVEDECIDE_URL", "http://127.0.0.1:8000/v1/systemone")
+ENDPOINT = os.environ.get("JEV_ENDPOINT_URL", "http://127.0.0.1:8000/v1/systemone")
 
 
 def api_key():
-    key = os.environ.get("HIVEDECIDE_API_KEY", "").strip()
-    if key:
-        return key
-    path = os.path.expanduser("~/code/hivedecide/.api-key")
-    if os.path.exists(path):
-        return open(path).read().strip()
-    sys.exit("set HIVEDECIDE_API_KEY")
+    key = os.environ.get("JEV_API_KEY", "").strip()
+    if not key:
+        sys.exit("set JEV_API_KEY")
+    return key
 
 
 KEY = api_key()

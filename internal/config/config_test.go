@@ -117,6 +117,26 @@ server:
 	require.ErrorContains(t, err, "UBIQUUM_TEST_MISSING_SECRET")
 }
 
+// An explicit default is how a setting says it is optional; without one a
+// missing variable still stops startup.
+func TestLoad_EnvDefaultMakesAVariableOptional(t *testing.T) {
+	t.Setenv("UBIQUUM_TEST_SET", "http://set")
+	path := writeTempFile(t, `
+server:
+  master_key: sk-test
+hivetrace:
+  task_classifier:
+    url: ${UBIQUUM_TEST_UNSET_URL:-}
+    api_key: ${UBIQUUM_TEST_UNSET_KEY:-fallback}
+    model: ${UBIQUUM_TEST_SET:-ignored}
+`)
+	cfg, err := Load(path)
+	require.NoError(t, err)
+	assert.Empty(t, cfg.HiveTrace.TaskClassifier.URL)
+	assert.Equal(t, "fallback", cfg.HiveTrace.TaskClassifier.APIKey)
+	assert.Equal(t, "http://set", cfg.HiveTrace.TaskClassifier.Model)
+}
+
 func TestLoad_Defaults(t *testing.T) {
 	content := `
 server:

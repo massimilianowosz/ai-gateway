@@ -92,13 +92,13 @@ type HiveTraceConfig struct {
 	TaskClassifier TaskClassifierConfig `yaml:"task_classifier"`
 }
 
-// TaskClassifierConfig points at a hivedecide systemone endpoint. It receives
+// TaskClassifierConfig points at a SYSTEMONE endpoint. It receives
 // the user's opening request with secrets and PII already masked, once per
 // session; use a local deployment so no prompt leaves the appliance.
 type TaskClassifierConfig struct {
 	URL    string `yaml:"url"`     // e.g. http://127.0.0.1:8000/v1/systemone
-	APIKey string `yaml:"api_key"` // use ${HIVEDECIDE_API_KEY}
-	Model  string `yaml:"model"`   // default spark-4b, the most accurate on task type
+	APIKey string `yaml:"api_key"` // use ${JEV_API_KEY:-}
+	Model  string `yaml:"model"`   // default gemma4-e4b, best measured on task type and secrets
 	// MinConfidence is the probability below which the label is discarded
 	// (default 0.5): an unlabelled session is better than a wrong one.
 	MinConfidence float64       `yaml:"min_confidence"`
@@ -140,7 +140,7 @@ func (c *HiveTraceConfig) ApplyDefaults() {
 		c.CleanupInterval = time.Hour
 	}
 	if c.TaskClassifier.Model == "" {
-		c.TaskClassifier.Model = "spark-4b"
+		c.TaskClassifier.Model = "gemma4-e4b"
 	}
 	if c.TaskClassifier.MinConfidence <= 0 || c.TaskClassifier.MinConfidence > 1 {
 		c.TaskClassifier.MinConfidence = 0.5

@@ -26,7 +26,7 @@ var taskDescriptions = map[string]string{
 	TaskWriting:   "producing prose, docs or messages",
 }
 
-// taskClassifier asks hivedecide what kind of task a session's opening request
+// taskClassifier asks SYSTEMONE what kind of task a session's opening request
 // is. Each session is asked once; an unreachable service is left alone for a
 // minute rather than costing every flush a timeout.
 type taskClassifier struct {

@@ -10,11 +10,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// envVarPattern matches ${VAR_NAME} patterns in config values.
-var envVarPattern = regexp.MustCompile(`\$\{([^}]+)\}`)
+// envVarPattern matches ${VAR_NAME} and ${VAR_NAME:-default} in config values.
+var envVarPattern = regexp.MustCompile(`\$\{([^}:]+)(:-([^}]*))?\}`)
 
 // Load reads and parses a gateway configuration file.
-// Environment variables in the format ${VAR_NAME} are expanded.
+// Environment variables in the format ${VAR_NAME} are expanded; ${VAR_NAME:-x}
+// falls back to x, which may be empty, for settings that are optional.
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -23,14 +24,17 @@ func Load(path string) (*Config, error) {
 
 	// Expand environment variables. A missing secret must fail startup rather
 	// than becoming the literal string "${NAME}", which would silently turn a
-	// placeholder into a valid master key.
+	// placeholder into a valid master key. Only an explicit default opts out.
 	var missing []string
 	expanded := envVarPattern.ReplaceAllFunc(data, func(match []byte) []byte {
-		varName := envVarPattern.FindSubmatch(match)[1]
-		if val, ok := os.LookupEnv(string(varName)); ok {
+		parts := envVarPattern.FindSubmatch(match)
+		if val, ok := os.LookupEnv(string(parts[1])); ok {
 			return []byte(val)
 		}
-		missing = append(missing, string(varName))
+		if len(parts[2]) > 0 {
+			return parts[3]
+		}
+		missing = append(missing, string(parts[1]))
 		return nil
 	})
 	if len(missing) > 0 {

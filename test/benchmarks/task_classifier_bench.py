@@ -2,7 +2,7 @@
 """Compare task classifiers on the job hivetrace would actually give them.
 
 Three candidates, same cases, same label set:
-  spark-4b / laya   hivedecide, local, logit scoring, no generation
+  spark-4b / laya   SYSTEMONE, local, logit scoring, no generation
   jev-1.13          generative, reached through the gateway
 
 Labels are the opening user turn of an agent session, which is what hivetrace
@@ -17,9 +17,9 @@ import re
 import sys
 import urllib.request
 
-HIVEDECIDE = "http://127.0.0.1:8000/v1/systemone"
+SYSTEMONE = os.environ.get("JEV_ENDPOINT_URL", "http://127.0.0.1:8000/v1/systemone")
 GATEWAY = "http://127.0.0.1:4000/v1/chat/completions"
-HD_KEY = os.environ.get("HIVEDECIDE_API_KEY", "")
+JEV_KEY = os.environ.get("JEV_API_KEY", "")
 GW_KEY = os.environ.get("GATEWAY_KEY", "")
 
 TYPES = {
@@ -89,13 +89,13 @@ def post(url, payload, key):
         return json.load(r)
 
 
-def ask_hivedecide(text, model):
-    res = post(HIVEDECIDE, {
+def ask_systemone(text, model):
+    res = post(SYSTEMONE, {
         "state": text, "model": model,
         "questions": {"kind": TYPE_Q, "difficulty": DIFF_Q},
-    }, HD_KEY)
+    }, JEV_KEY)
     a = res["answers"]
-    ms = res.get("x_hivedecide", {}).get("timing", {}).get("total_seconds", 0) * 1000
+    ms = res.get("x_systemone", {}).get("timing", {}).get("total_seconds", 0) * 1000
     # Levels are 0-indexed on the wire; the labels in CASES are 1-5.
     return a["kind"]["choice"], round(a["difficulty"]["score"]) + 1, ms
 
@@ -161,7 +161,7 @@ if __name__ == "__main__":
         if model.startswith("jev"):
             summary.append((model, *run(f"jev via gateway ({model})", ask_jev, model)))
         else:
-            summary.append((model, *run(f"hivedecide ({model})", ask_hivedecide, model)))
+            summary.append((model, *run(f"systemone ({model})", ask_systemone, model)))
     print("\n" + "=" * 52)
     print(f"  {'model':<22} {'type':>8} {'difficulty':>12}")
     for model, k, d in summary:
