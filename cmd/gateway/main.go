@@ -22,6 +22,7 @@ import (
 	"github.com/ubiquum-ai/ubiquum-ai-gateway/internal/config"
 	"github.com/ubiquum-ai/ubiquum-ai-gateway/internal/console"
 	"github.com/ubiquum-ai/ubiquum-ai-gateway/internal/hivestate"
+	"github.com/ubiquum-ai/ubiquum-ai-gateway/internal/hivetrace"
 	"github.com/ubiquum-ai/ubiquum-ai-gateway/internal/livezone"
 	"github.com/ubiquum-ai/ubiquum-ai-gateway/internal/logbuf"
 	"github.com/ubiquum-ai/ubiquum-ai-gateway/internal/middleware"
@@ -421,6 +422,38 @@ func runServer(args []string) error {
 		logger.Info("hivestate enabled", "model", cfg.HiveState.Model, "threshold", cfg.HiveState.Threshold)
 	}
 
+	// HiveTrace goes last so it captures the body actually sent upstream and
+	// the bytes actually returned, after every rewrite above.
+	var traceStore hivetrace.TrafficStore
+	var traceHub *hivetrace.Hub
+	if cfg.HiveTrace.Enabled {
+		ts, err := initTraceStore(cfg.HiveTrace, db)
+		if err != nil {
+			logger.Error("failed to initialize hivetrace store", "error", err)
+			return err
+		}
+		traceStore = ts
+		traceHub = hivetrace.NewHub()
+		recorder := hivetrace.NewRecorder(ts, db, cfg.HiveTrace, metrics, traceHub, logger)
+		defer recorder.Close()
+		extraMiddlewares = append(extraMiddlewares, hivetrace.Middleware(recorder))
+
+		if stop := startTraceAnalyzer(ts, traceHub, cfg.HiveTrace, pc, logger); stop != nil {
+			defer stop()
+		}
+		if stop := startTraceRetentionJanitor(ts, cfg.HiveTrace, logger); stop != nil {
+			defer stop()
+		}
+		logger.Info("hivetrace enabled",
+			"backend", cfg.HiveTrace.Backend,
+			"capture_bodies", cfg.HiveTrace.CaptureBodies,
+			"redact", cfg.HiveTrace.ShouldRedact(),
+			"sample_rate", cfg.HiveTrace.SampleRate,
+			"retention", cfg.HiveTrace.Retention)
+	}
+	srv.TraceStore = traceStore
+	srv.TraceHub = traceHub
+
 	server.RegisterRoutes(srv, registry, rt, authMw, db, pc, spender, webhooks, semanticCache, metrics, extraMiddlewares...)
 
 	// Admin-only logs endpoint (streams from in-memory ring buffer)
@@ -529,6 +562,80 @@ func startSpendRetentionJanitor(db store.Store, interval time.Duration, logger *
 	go func() {
 		purge()
 		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				purge()
+			case <-done:
+				return
+			}
+		}
+	}()
+	return func() { close(done) }
+}
+
+// initTraceStore selects the traffic-analytics backend, mirroring
+// initCacheStore. The sql backend reuses the gateway's own connection rather
+// than opening a second one, which on SQLite would deadlock against the
+// single-connection pool.
+func initTraceStore(cfg config.HiveTraceConfig, db store.Store) (hivetrace.TrafficStore, error) {
+	switch cfg.Backend {
+	case "clickhouse":
+		return hivetrace.NewClickHouseStore(cfg.ClickHouseURL, cfg.Retention)
+	default:
+		return hivetrace.NewSQLStore(db)
+	}
+}
+
+// startTraceAnalyzer recomputes session summaries on a timer.
+func startTraceAnalyzer(ts hivetrace.TrafficStore, hub *hivetrace.Hub, cfg config.HiveTraceConfig, pc *pricing.Calculator, logger *slog.Logger) func() {
+	analyzer := hivetrace.NewAnalyzer(ts, cfg.AnalyzeInterval, hub, logger).WithPrices(func(model string) (float64, bool) {
+		p, ok := pc.GetPrice(model)
+		return p.OutputCostPerToken * 1_000_000, ok
+	})
+
+	run := func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		if err := analyzer.Run(ctx); err != nil {
+			logger.Warn("hivetrace analyzer pass failed", "error", err)
+		}
+	}
+
+	done := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(cfg.AnalyzeInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				run()
+			case <-done:
+				return
+			}
+		}
+	}()
+	return func() { close(done) }
+}
+
+// startTraceRetentionJanitor drops captured traffic past its retention.
+func startTraceRetentionJanitor(ts hivetrace.TrafficStore, cfg config.HiveTraceConfig, logger *slog.Logger) func() {
+	purge := func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		removed, err := ts.Purge(ctx, time.Now().Add(-cfg.Retention))
+		if err != nil {
+			logger.Warn("hivetrace retention purge failed", "error", err)
+		} else if removed > 0 {
+			logger.Info("purged expired trace events", "count", removed)
+		}
+	}
+
+	done := make(chan struct{})
+	go func() {
+		purge()
+		ticker := time.NewTicker(cfg.CleanupInterval)
 		defer ticker.Stop()
 		for {
 			select {

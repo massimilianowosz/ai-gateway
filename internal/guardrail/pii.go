@@ -18,6 +18,24 @@ type PIIScanner struct{}
 // NewPIIScanner creates a PII scanner.
 func NewPIIScanner() *PIIScanner { return &PIIScanner{} }
 
+// PIITypes lists every entity the scanner can report, in detector order.
+func PIITypes() []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, d := range piiDetectors {
+		if !seen[d.entity] {
+			seen[d.entity] = true
+			out = append(out, d.entity)
+		}
+	}
+	return out
+}
+
+// PIIReportedByDefault reports whether traffic analysis shows an entity until
+// an operator says otherwise. PERSON is off: a name being mentioned is not
+// something anyone acts on, and the watchlist covers the names that matter.
+func PIIReportedByDefault(entity string) bool { return entity != "PERSON" }
+
 func (s *PIIScanner) Name() string { return "pii" }
 
 // Scan runs every detector: the behaviour for a tenant that has never
@@ -73,6 +91,63 @@ func (s *PIIScanner) Redact(text string, enabledEntities *[]string) (string, []s
 	}
 
 	return out, redacted
+}
+
+// Findings returns every enabled entity that matched, with occurrence counts.
+//
+// scan stops at the first hit because blocking only needs one reason. Traffic
+// analysis needs the full inventory instead: an operator asking what personal
+// data went through a session is asking which entities and how many, not which
+// one happened to sort first.
+func (s *PIIScanner) Findings(text string, enabledEntities *[]string) []DetectorMatch {
+	return s.findings(text, enabledEntities, 0)
+}
+
+// FindingsWithSamples also returns up to max distinct matched values per
+// entity. See DetectorMatch on what keeping them costs.
+func (s *PIIScanner) FindingsWithSamples(text string, enabledEntities *[]string, max int) []DetectorMatch {
+	return s.findings(text, enabledEntities, max)
+}
+
+func (s *PIIScanner) findings(text string, enabledEntities *[]string, max int) []DetectorMatch {
+	if text == "" {
+		return nil
+	}
+	var allowed map[string]bool
+	if enabledEntities != nil {
+		allowed = allowedEntities(*enabledEntities)
+	}
+
+	var out []DetectorMatch
+	for _, d := range piiDetectors {
+		if !d.enabled(allowed) {
+			continue
+		}
+		count := 0
+		var samples []string
+		seen := map[string]struct{}{}
+		for _, m := range d.re.FindAllStringSubmatchIndex(text, -1) {
+			start, end := detectorSpan(m, d.group)
+			if start < 0 {
+				continue
+			}
+			if d.validate != nil && !d.validate(text[start:end]) {
+				continue
+			}
+			count++
+			if max > 0 && len(samples) < max {
+				v := sample(text[start:end])
+				if _, dup := seen[v]; !dup && v != "" {
+					seen[v] = struct{}{}
+					samples = append(samples, v)
+				}
+			}
+		}
+		if count > 0 {
+			out = append(out, DetectorMatch{Name: d.entity, Count: count, Samples: samples})
+		}
+	}
+	return out
 }
 
 // scan reports the first enabled entity found. A nil allowed map means no
@@ -160,12 +235,16 @@ var piiDetectors = []piiDetector{
 	},
 	// === Portal entity list ===
 	{
-		entity: "IBAN_CODE",
-		re:     regexp.MustCompile(`(?i)\bIT\s?[0-9]{2}\s?[A-Z]\s?(?:[0-9]{4}\s?){5}[0-9]{2}\b`),
+		entity:   "IBAN_CODE",
+		re:       regexp.MustCompile(`(?i)\bIT\s?[0-9]{2}\s?[A-Z]\s?(?:[0-9]{4}\s?){5}[0-9]{2}\b`),
+		validate: validateIBAN,
 	},
+	// Written either compact or in groups of four; a free mix of the two is what
+	// let ordinary words ("RY506AX9 Orologio Solare") pass for an IBAN.
 	{
-		entity: "IBAN_CODE",
-		re:     regexp.MustCompile(`(?i)\b[A-Z]{2}[0-9]{2}\s?[A-Z0-9]{4}\s?(?:[A-Z0-9]{4}\s?){2,7}[A-Z0-9]{1,4}\b`),
+		entity:   "IBAN_CODE",
+		re:       regexp.MustCompile(`\b[A-Z]{2}[0-9]{2}(?:[A-Z0-9]{11,30}|(?: [A-Z0-9]{4}){2,7}(?: [A-Z0-9]{1,4})?)\b`),
+		validate: validateIBAN,
 	},
 	{
 		entity:   "CREDIT_CARD",
@@ -200,23 +279,42 @@ var piiDetectors = []piiDetector{
 		group: 1,
 	},
 	{
-		entity: "IP_ADDRESS",
-		re: regexp.MustCompile(`\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b` +
-			`|(?:[0-9A-Fa-f]{0,4}:){2,7}[0-9A-Fa-f]{0,4}`),
+		entity:   "IP_ADDRESS",
+		re:       regexp.MustCompile(`\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b`),
+		validate: validateIPAddress,
+	},
+	{
+		// IPv6 separately, because \b cannot delimit it: a colon is already a
+		// non-word character, so ::c inside std::cout looked like a bounded
+		// address — and net.ParseIP agrees that ::c is valid, so validation did
+		// not catch it either. Every C++ scope operator in a session was being
+		// counted as somebody's IP. RE2 has no lookaround, so the delimiters are
+		// matched explicitly and the address is taken from the group.
+		entity:   "IP_ADDRESS",
+		re:       regexp.MustCompile(`(?:^|[^0-9A-Za-z:])((?:[0-9A-Fa-f]{0,4}:){2,7}[0-9A-Fa-f]{0,4})(?:[^0-9A-Za-z:]|$)`),
+		group:    1,
 		validate: validateIPAddress,
 	},
 	// PERSON and LOCATION have no self-contained shape: they are recognised by
 	// the phrase that introduces them, and only the name itself is replaced.
 	// The cue is case-insensitive, the name is not.
+	//
+	// The leading \b keeps the cue honest. Without it a phrase boundary inside
+	// a longer word matched, and the capitalised word that opened the next
+	// sentence was reported as a name or a place.
+	//
+	// A cue only catches someone who introduces themselves, so this misses
+	// every name mentioned in passing. The watchlist covers the names an
+	// organisation actually cares about; this stays for the rest.
 	{
 		entity: "PERSON",
-		re: regexp.MustCompile(`(?i:mi\s+chiamo|il\s+mio\s+nome\s+è|my\s+name\s+is|sig\.ra|sig\.|signora|signor|dott\.ssa|dott\.|dr\.|mr\.|mrs\.|ms\.)\s+` +
+		re: regexp.MustCompile(`\b(?i:mi\s+chiamo|il\s+mio\s+nome\s+è|my\s+name\s+is|sig\.ra|sig\.|signora|signor|dott\.ssa|dott\.|dr\.|mr\.|mrs\.|ms\.)\s+` +
 			`(\p{Lu}[\p{L}']+(?:\s+\p{Lu}[\p{L}']+){0,2})`),
 		group: 1,
 	},
 	{
 		entity: "LOCATION",
-		re: regexp.MustCompile(`(?i:residente\s+(?:a|in)|abito\s+(?:a|in)|città\s+di|vivo\s+(?:a|in)|lives?\s+in|living\s+in|located\s+in|based\s+in)\s+` +
+		re: regexp.MustCompile(`\b(?i:residente\s+(?:a|in)|abito\s+(?:a|in)|città\s+di|vivo\s+(?:a|in)|lives?\s+in|living\s+in|located\s+in|based\s+in)\s+` +
 			`(\p{Lu}[\p{L}']+(?:[\s'-]\p{Lu}[\p{L}']+){0,2})`),
 		group: 1,
 	},
@@ -276,6 +374,42 @@ func cfOddValue(c byte) int {
 		'Z': 23,
 	}
 	return table[c]
+}
+
+// --- IBAN validation (ISO 13616) ---
+
+// ibanLengths is the SWIFT registry: a country code the registry does not list,
+// or the wrong length for it, is not an IBAN whatever its digits say.
+var ibanLengths = map[string]int{
+	"AD": 24, "AE": 23, "AL": 28, "AT": 20, "AZ": 28, "BA": 20, "BE": 16, "BG": 22, "BH": 22, "BR": 29,
+	"BY": 28, "CH": 21, "CR": 22, "CY": 28, "CZ": 24, "DE": 22, "DK": 18, "DO": 28, "EE": 20, "EG": 29,
+	"ES": 24, "FI": 18, "FO": 18, "FR": 27, "GB": 22, "GE": 22, "GI": 23, "GL": 18, "GR": 27, "GT": 28,
+	"HR": 21, "HU": 28, "IE": 22, "IL": 23, "IQ": 23, "IS": 26, "IT": 27, "JO": 30, "KW": 30, "KZ": 20,
+	"LB": 28, "LC": 32, "LI": 21, "LT": 20, "LU": 20, "LV": 21, "MC": 27, "MD": 24, "ME": 22, "MK": 19,
+	"MR": 27, "MT": 31, "MU": 30, "NL": 18, "NO": 15, "PK": 24, "PL": 28, "PS": 29, "PT": 25, "QA": 29,
+	"RO": 24, "RS": 22, "SA": 24, "SC": 31, "SE": 24, "SI": 19, "SK": 24, "SM": 27, "ST": 25, "SV": 28,
+	"TL": 23, "TN": 24, "TR": 26, "UA": 29, "VA": 22, "VG": 24, "XK": 20,
+}
+
+func validateIBAN(raw string) bool {
+	iban := strings.ToUpper(strings.Join(strings.Fields(raw), ""))
+	if len(iban) < 4 || ibanLengths[iban[:2]] != len(iban) {
+		return false
+	}
+	// Check digits: the first four characters moved to the end, letters as
+	// 10–35, must leave 1 modulo 97.
+	rem := 0
+	for _, r := range iban[4:] + iban[:4] {
+		switch {
+		case r >= '0' && r <= '9':
+			rem = (rem*10 + int(r-'0')) % 97
+		case r >= 'A' && r <= 'Z':
+			rem = (rem*100 + int(r-'A') + 10) % 97
+		default:
+			return false
+		}
+	}
+	return rem == 1
 }
 
 // --- Credit Card Luhn validation ---

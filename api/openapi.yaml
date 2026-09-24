@@ -1241,6 +1241,316 @@ paths:
                     items:
                       $ref: "#/components/schemas/SpendRecord"
 
+  /v1/traffic/sessions:
+    get:
+      summary: List AI traffic session summaries
+      description: >
+        Per-session account of what an agent did: turns, spend, tokens, tools
+        and MCP servers used, files touched, and PII or secret detections.
+        Requires hivetrace.enabled; answers 503 otherwise.
+      operationId: getTraceSessions
+      tags: [Traffic]
+      security:
+        - MasterKey: []
+      parameters:
+        - name: team_id
+          in: query
+          schema:
+            type: string
+        - name: key
+          in: query
+          schema:
+            type: string
+        - name: user_id
+          in: query
+          schema:
+            type: string
+        - name: agent_id
+          in: query
+          schema:
+            type: string
+        - name: start_date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: has_findings
+          in: query
+          description: Restrict to sessions where a PII or secret detector matched.
+          schema:
+            type: boolean
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+      responses:
+        "200":
+          description: Session summaries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/TraceSession"
+                  page:
+                    type: integer
+                  page_size:
+                    type: integer
+        "503":
+          description: hivetrace is not enabled
+
+  /v1/traffic/session:
+    get:
+      summary: Get one session with its turns
+      operationId: getTraceSession
+      tags: [Traffic]
+      security:
+        - MasterKey: []
+      parameters:
+        - name: session_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Session summary and timeline
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session:
+                    $ref: "#/components/schemas/TraceSession"
+                  events:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/TraceEvent"
+        "404":
+          description: Session not found
+        "503":
+          description: hivetrace is not enabled
+
+  /v1/traffic/events:
+    get:
+      summary: List captured turns
+      operationId: getTraceEvents
+      tags: [Traffic]
+      security:
+        - MasterKey: []
+      parameters:
+        - name: session_id
+          in: query
+          schema:
+            type: string
+        - name: team_id
+          in: query
+          schema:
+            type: string
+        - name: key
+          in: query
+          schema:
+            type: string
+        - name: model
+          in: query
+          schema:
+            type: string
+        - name: start_date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: has_findings
+          in: query
+          schema:
+            type: boolean
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+      responses:
+        "200":
+          description: Captured turns
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/TraceEvent"
+                  page:
+                    type: integer
+                  page_size:
+                    type: integer
+        "503":
+          description: hivetrace is not enabled
+
+  /v1/traffic/stream:
+    get:
+      summary: Stream live traffic activity
+      description: >
+        Server-sent events feeding the console's live view. Three event types:
+        `capture` when a turn completes, `event` once the worker has extracted
+        tools, files and findings from it, and `session` when the analyzer has
+        recomputed a session summary.
+      operationId: streamTraffic
+      tags: [Traffic]
+      security:
+        - MasterKey: []
+      responses:
+        "200":
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "503":
+          description: hivetrace is not enabled
+
+  /v1/watchlist:
+    get:
+      summary: List watched terms
+      description: >
+        Names, addresses and numbers reported whenever they appear in AI
+        traffic. `*` in a pattern matches any run of non-space characters.
+        Matches inside a directory of a file path are not reported.
+      operationId: listWatchlist
+      tags: [Traffic]
+      security:
+        - MasterKey: []
+      responses:
+        "200":
+          description: Terms, oldest first
+    post:
+      summary: Add a watched term
+      operationId: createWatchlistTerm
+      tags: [Traffic]
+      security:
+        - MasterKey: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [label, pattern]
+              properties:
+                label: { type: string }
+                pattern: { type: string }
+                enabled: { type: boolean }
+      responses:
+        "200": { description: Term created }
+        "400": { description: Missing label or unusable pattern }
+        "409": { description: Pattern already on the watchlist }
+
+  /v1/watchlist/update:
+    post:
+      summary: Pause or resume a watched term
+      operationId: updateWatchlistTerm
+      tags: [Traffic]
+      security:
+        - MasterKey: []
+      parameters:
+        - { name: id, in: query, required: true, schema: { type: integer } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled]
+              properties:
+                enabled: { type: boolean }
+      responses:
+        "200": { description: Term updated }
+
+  /v1/watchlist/delete:
+    post:
+      summary: Remove a watched term
+      operationId: deleteWatchlistTerm
+      tags: [Traffic]
+      security:
+        - MasterKey: []
+      parameters:
+        - { name: id, in: query, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Term removed }
+
+  /v1/detectors:
+    get:
+      summary: List standard PII types and whether traffic reports them
+      description: >
+        A type that is off is not reported in traffic findings but is still
+        redacted in stored traffic. Changes reach the recorder within 30 seconds.
+      operationId: listDetectors
+      tags: [Traffic]
+      security:
+        - MasterKey: []
+      responses:
+        "200":
+          description: One entry per PII type
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        type: { type: string, example: EMAIL_ADDRESS }
+                        kind: { type: string, example: pii }
+                        enabled: { type: boolean }
+                        default: { type: boolean }
+
+  /v1/detectors/update:
+    post:
+      summary: Turn reporting of a PII type on or off
+      operationId: updateDetector
+      tags: [Traffic]
+      security:
+        - MasterKey: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, enabled]
+              properties:
+                type: { type: string }
+                enabled: { type: boolean }
+      responses:
+        "200": { description: Setting saved }
+        "400": { description: Unknown type or missing enabled }
+
   /v1/team/create:
     post:
       summary: Create a team

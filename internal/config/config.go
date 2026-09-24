@@ -110,6 +110,7 @@ func applyDefaults(cfg *Config) {
 	cfg.Feedback.ApplyDefaults()
 	cfg.Workflow.ApplyDefaults()
 	cfg.Responses.ApplyDefaults()
+	cfg.HiveTrace.ApplyDefaults()
 
 	for i := range cfg.Models {
 		m := &cfg.Models[i]
@@ -230,6 +231,30 @@ func validate(cfg *Config) error {
 	validStrategies := map[string]bool{"shuffle": true, "round-robin": true, "latency": true}
 	if !validStrategies[cfg.Router.Strategy] {
 		return fmt.Errorf("router.strategy must be one of: shuffle, round-robin, latency")
+	}
+	if err := validateHiveTrace(&cfg.HiveTrace); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateHiveTrace(c *HiveTraceConfig) error {
+	if !c.Enabled {
+		return nil
+	}
+	switch c.Backend {
+	case "sql":
+	case "clickhouse":
+		if strings.TrimSpace(c.ClickHouseURL) == "" {
+			return fmt.Errorf("hivetrace.clickhouse_url is required for backend clickhouse")
+		}
+	default:
+		return fmt.Errorf("hivetrace.backend must be one of: sql, clickhouse")
+	}
+	// Storing prompts and completions verbatim is the one setting here that can
+	// turn the trace store into a secret store, so refusing it takes two keys.
+	if c.CaptureBodies && !c.ShouldRedact() && !c.AllowUnredacted {
+		return fmt.Errorf("hivetrace.capture_bodies with redact: false also requires hivetrace.allow_unredacted: true")
 	}
 	return nil
 }

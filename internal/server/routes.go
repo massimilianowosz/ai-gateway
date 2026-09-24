@@ -469,6 +469,12 @@ func RegisterRoutes(s *Server, registry *provider.Registry, rt *router.Router, a
 	// Admin API (requires master key)
 	adminHandler := admin.NewHandler(db, s.cfg.Server.MasterKey, s.logger, webhooks)
 	adminHandler.SetConfig(s.cfg)
+	if s.TraceStore != nil {
+		adminHandler.SetTrafficStore(s.TraceStore)
+	}
+	if s.TraceHub != nil {
+		adminHandler.SetTrafficHub(s.TraceHub)
+	}
 	if s.Console != nil {
 		adminHandler.SetAdminSessionValidator(s.Console.ValidateAdminSession)
 		s.Console.Register(mux, adminHandler.RequireMasterKey)
@@ -575,6 +581,18 @@ func RegisterRoutes(s *Server, registry *provider.Registry, rt *router.Router, a
 		{"POST", "/v1/route/settings", adminHandler.UpdateRouteSettings},
 		// Feedback
 		{"GET", "/v1/feedback/list", adminHandler.ListFeedback},
+		// AI traffic observability
+		{"GET", "/v1/traffic/sessions", adminHandler.GetTraceSessions},
+		{"GET", "/v1/traffic/session", adminHandler.GetTraceSession},
+		{"GET", "/v1/traffic/events", adminHandler.GetTraceEvents},
+		{"GET", "/v1/traffic/stream", adminHandler.StreamTraffic},
+		// Watchlist (appliance-declared sensitive terms)
+		{"GET", "/v1/watchlist", adminHandler.GetWatchlist},
+		{"POST", "/v1/watchlist", adminHandler.CreateWatchlistTerm},
+		{"POST", "/v1/watchlist/update", adminHandler.UpdateWatchlistTerm},
+		{"POST", "/v1/watchlist/delete", adminHandler.DeleteWatchlistTerm},
+		{"GET", "/v1/detectors", adminHandler.GetDetectors},
+		{"POST", "/v1/detectors/update", adminHandler.UpdateDetector},
 		// Users
 		{"POST", "/v1/user/create", adminHandler.CreateUser},
 		{"GET", "/v1/user/info", adminHandler.GetUser},

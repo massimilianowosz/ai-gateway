@@ -18,6 +18,7 @@ import (
 	"github.com/ubiquum-ai/ubiquum-ai-gateway/internal/provider"
 	"github.com/ubiquum-ai/ubiquum-ai-gateway/internal/router"
 	"github.com/ubiquum-ai/ubiquum-ai-gateway/internal/spend"
+	"github.com/ubiquum-ai/ubiquum-ai-gateway/internal/store"
 )
 
 // --- Mock provider for Anthropic tests ---
@@ -563,6 +564,40 @@ func TestAnthropicHandler_RecordsCacheTokens(t *testing.T) {
 
 	assert.Equal(t, 4000, tokens.cached, "cache reads must reach the metrics recorder")
 	assert.Equal(t, 1000, tokens.created, "cache writes must reach the metrics recorder")
+}
+
+// UsageCapture is the only path by which the cache split reaches hivetrace, and
+// recordSpend filled every other field but those two — so every session in the
+// console reported zero cached tokens no matter how much of the prompt the
+// provider had actually served from cache.
+func TestAnthropicHandler_UsageCaptureCarriesCacheSplit(t *testing.T) {
+	stop := "stop"
+	usage := &provider.Usage{PromptTokens: 5200, CompletionTokens: 40, TotalTokens: 5240}
+	usage.SetCacheUsage(4000, 1000)
+
+	mock := &mockAnthropicProvider{
+		completeResp: &provider.CompletionResponse{
+			ID:      "chatcmpl-capture",
+			Model:   "claude-3",
+			Choices: []provider.Choice{{Message: &provider.Message{Role: "assistant", Content: "hi"}, FinishReason: &stop}},
+			Usage:   usage,
+		},
+	}
+
+	registry := newTestRegistry("claude-3", mock)
+	spender := spend.NewBatchWriter(nil, slog.Default(), time.Hour)
+	t.Cleanup(func() { _ = spender.Close() })
+	handler := NewAnthropicHandler(registry, newTestRouter(registry), slog.Default(), nil, nil, spender)
+
+	capture := &store.UsageCapture{}
+	body := `{"model":"claude-3","messages":[{"role":"user","content":"Hi"}],"max_tokens":1024}`
+	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(body))
+	req = req.WithContext(store.WithUsageCapture(req.Context(), capture))
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+
+	assert.True(t, capture.Filled)
+	assert.Equal(t, 4000, capture.CachedPromptTokens, "cache reads must reach hivetrace")
+	assert.Equal(t, 1000, capture.CacheCreationTokens, "cache writes must reach hivetrace")
 }
 
 // sseEvents parses the SSE body into (event, decoded-data) pairs.

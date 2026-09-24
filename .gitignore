@@ -8,6 +8,8 @@ bin/
 *.test
 *.prof
 /gateway
+/scanshow
+__pycache__/
 
 # Config (local)
 gateway.yaml

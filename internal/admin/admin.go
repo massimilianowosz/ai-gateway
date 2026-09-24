@@ -18,6 +18,7 @@ import (
 	"github.com/ubiquum-ai/ubiquum-ai-gateway/internal/agenttoken"
 	"github.com/ubiquum-ai/ubiquum-ai-gateway/internal/auth"
 	"github.com/ubiquum-ai/ubiquum-ai-gateway/internal/config"
+	"github.com/ubiquum-ai/ubiquum-ai-gateway/internal/hivetrace"
 	"github.com/ubiquum-ai/ubiquum-ai-gateway/internal/store"
 	"github.com/ubiquum-ai/ubiquum-ai-gateway/internal/webhook"
 )
@@ -37,6 +38,8 @@ type Handler struct {
 		VerifySnapshot(context.Context, string) (*agenttoken.SnapshotClaims, error)
 	}
 	adminSessionValidator func(*http.Request) bool
+	traffic               hivetrace.TrafficStore
+	trafficHub            *hivetrace.Hub
 }
 
 // SetAdminSessionValidator lets the embedded appliance console authorize an

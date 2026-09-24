@@ -33,6 +33,42 @@ func selection(entities ...string) *[]string {
 	return &chosen
 }
 
+func TestPIIScanner_IBANNeedsAValidChecksum(t *testing.T) {
+	s := NewPIIScanner()
+	for _, text := range []string{
+		"IT60X0542811101000000123456",
+		"bonifico su IT60 X054 2811 1010 0000 0123 456 grazie",
+		"GB82 WEST 1234 5698 7654 32",
+		"NL91ABNA0417164300",
+	} {
+		_, ok := findingNamed(s.Findings(text, nil), "IBAN_CODE")
+		if !ok {
+			t.Errorf("expected an IBAN in %q", text)
+		}
+	}
+	for _, text := range []string{
+		"RY506AX9 Orologio Solare",
+		"RG213WX9 GARANZIA ITALIA",
+		"DE89370400440532013001",     // one digit off
+		"ZZ89370400440532013000",     // no such country
+		"DE8937040044053201300012",   // right checksum shape, wrong length for DE
+		"SKU AB12CDEF3456GHIJ7890KL", // product codes have the shape too
+	} {
+		if _, ok := findingNamed(s.Findings(text, nil), "IBAN_CODE"); ok {
+			t.Errorf("no IBAN expected in %q", text)
+		}
+	}
+}
+
+func findingNamed(ms []DetectorMatch, name string) (DetectorMatch, bool) {
+	for _, m := range ms {
+		if m.Name == name {
+			return m, true
+		}
+	}
+	return DetectorMatch{}, false
+}
+
 func TestPIIScanner_DetectsWholeEntityMatrix(t *testing.T) {
 	s := NewPIIScanner()
 	for _, tc := range piiMatrix {

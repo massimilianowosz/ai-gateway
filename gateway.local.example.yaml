@@ -3,7 +3,9 @@ server:
   master_key: ${UBIQUUM_MASTER_KEY}
   upstream_token_forwarding:
     enabled: true
-    allowed_providers: [anthropic]
+    # Names the client declares, not gateway provider profiles:
+    # Claude Code sends "anthropic", Codex sends "chatgpt_codex".
+    allowed_providers: [anthropic, chatgpt_codex]
     header: ${UBIQUUM_UPSTREAM_AUTH_HEADER}
     provider_header: ${UBIQUUM_UPSTREAM_PROVIDER_HEADER}
 
@@ -24,6 +26,8 @@ providers:
     type: echo
   anthropic-oauth:
     type: anthropic
+  codex-oauth:
+    type: chatgpt_codex
 
 models:
   - name: echo-test
@@ -99,5 +103,65 @@ models:
 router:
   strategy: shuffle
 
+# No model_aliases for the claude-code-* fleet on purpose. An alias is
+# caller-independent, so it would send every request for claude-sonnet-5 to the
+# pass-through deployment, and it would refuse to start the day a metered
+# claude-sonnet-5 is added ("conflicts with a configured model name").
+# The separation is handled per caller instead: a request carrying a scoped
+# upstream token resolves the provider's own model name to the matching
+# oauth_passthrough deployment, while the same name without a token goes to the
+# metered one. See UpstreamAlias in internal/provider/registry.go.
+
 pricing:
   disable_remote_refresh: true
+
+# AI traffic observability. Captures every model call in passthrough and
+# aggregates it per session: operations, spend, tools and MCP servers used,
+# files touched, and PII or secrets found in prompts and responses.
+# Off by default — capture copies every response body, and persisting prompts
+# changes the privacy profile of the deployment.
+# hivetrace:
+#   enabled: true
+#   backend: sql            # sql (the gateway database) | clickhouse
+#   # clickhouse_url: http://user:pass@clickhouse:8123/ubiquum
+#   capture_bodies: false
+  # Keeps the text each detector matched beside the finding and shows it in
+  # the console, for checking whether a detector fires on real data or noise.
+  # Leaves secrets and personal data in the trace store: turn it off after.
+  finding_samples: false   # store the prompt and answer text, not just the findings
+#   redact: true            # replace PII and secrets before writing; needs allow_unredacted to turn off
+#   sample_rate: 1.0        # sampled per session, so a captured conversation is kept whole
+#   max_body_bytes: 262144
+#   flush_interval: 5s
+#   analyze_interval: 1m
+#   retention: 720h
+#   cleanup_interval: 1h
+#   # Labels the task type from the opening request when files and tools do
+#   # not settle it. Gets the request with secrets and PII masked; keep it local.
+#   task_classifier:
+#     url: http://127.0.0.1:8000/v1/systemone
+#     api_key: ${HIVEDECIDE_API_KEY}
+#     model: spark-4b
+#     min_confidence: 0.5
+
+  # Codex pass-through, against ChatGPT's backend rather than api.openai.com.
+  # The codex- prefix is the contract with modelhive-cli's proxy, which
+  # prepends it to whatever model Codex asks for.
+  - name: codex-gpt-5.5-codex
+    provider: codex-oauth
+    provider_model: gpt-5.5-codex
+    auth_mode: oauth_passthrough
+    billing_mode: flat
+    console_hidden: true
+  - name: codex-gpt-5.5
+    provider: codex-oauth
+    provider_model: gpt-5.5
+    auth_mode: oauth_passthrough
+    billing_mode: flat
+    console_hidden: true
+  - name: codex-gpt-5.1-codex-max
+    provider: codex-oauth
+    provider_model: gpt-5.1-codex-max
+    auth_mode: oauth_passthrough
+    billing_mode: flat
+    console_hidden: true

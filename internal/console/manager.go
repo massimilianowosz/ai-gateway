@@ -70,11 +70,12 @@ func (m *Manager) Register(mux *http.ServeMux, requireAdmin func(http.Handler) h
 	})
 	staticFS, _ := fs.Sub(assets, "assets")
 	staticHandler := http.StripPrefix("/console/", http.FileServer(http.FS(staticFS)))
-	mux.Handle("GET /console/", securityHeaders(staticHandler))
+	mux.Handle("GET /console/", securityHeaders(revalidated(staticHandler)))
 	mux.HandleFunc("POST /console/api/session", m.login)
 	mux.HandleFunc("GET /console/api/session", m.sessionInfo)
 	mux.HandleFunc("DELETE /console/api/session", m.logout)
 	mux.Handle("GET /console/api/models", requireAdmin(http.HandlerFunc(m.listModels)))
+	mux.Handle("GET /console/api/model-catalog", requireAdmin(http.HandlerFunc(m.listModelCatalog)))
 	mux.Handle("GET /console/api/connections", requireAdmin(http.HandlerFunc(m.listConnections)))
 	mux.Handle("POST /console/api/connections", requireAdmin(http.HandlerFunc(m.createConnection)))
 	mux.Handle("DELETE /console/api/connections/{id}", requireAdmin(http.HandlerFunc(m.deleteConnection)))
@@ -144,6 +145,37 @@ func (m *Manager) listModels(w http.ResponseWriter, _ *http.Request) {
 		models = m.registry.ListConsoleModels()
 	}
 	writeConsoleJSON(w, http.StatusOK, map[string]any{"models": models})
+}
+
+// catalogEntry is what the console needs to name a model the way people do.
+// Traffic records the alias a client asked for — claude-code-sonnet-5 — and
+// only the registry knows it is Anthropic's claude-sonnet-5 underneath.
+type catalogEntry struct {
+	Name          string `json:"name"`
+	ProviderModel string `json:"provider_model"`
+	Provider      string `json:"provider"`
+	ProviderType  string `json:"provider_type"`
+}
+
+// listModelCatalog covers every routable model, hidden ones included: a
+// hidden model still shows up in traffic, and still needs a name there.
+func (m *Manager) listModelCatalog(w http.ResponseWriter, _ *http.Request) {
+	entries := []catalogEntry{}
+	if m.registry != nil {
+		for _, name := range m.registry.ListModels() {
+			deps, err := m.registry.GetDeployments(name)
+			if err != nil || len(deps) == 0 {
+				continue
+			}
+			dep := deps[0]
+			entry := catalogEntry{Name: name, ProviderModel: dep.ProviderModel, Provider: dep.ProviderName}
+			if dep.Provider != nil {
+				entry.ProviderType = dep.Provider.Name()
+			}
+			entries = append(entries, entry)
+		}
+	}
+	writeConsoleJSON(w, http.StatusOK, map[string]any{"data": entries})
 }
 
 func (m *Manager) listConnections(w http.ResponseWriter, _ *http.Request) {
@@ -249,6 +281,40 @@ func (m *Manager) allowLogin(ip string) bool {
 	window.Count++
 	m.loginWindows[ip] = window
 	return true
+}
+
+// assetsETag identifies this build's console bundle. Files come from an
+// embed.FS, whose entries carry a zero ModTime, so http.FileServer emits
+// neither Last-Modified nor ETag — and a response with no validator and no
+// Cache-Control is cached heuristically, for as long as the browser likes.
+// That left upgraded appliances still running the console shipped with the
+// previous binary, reproducing bugs that were already fixed.
+var assetsETag = func() string {
+	h := sha256.New()
+	_ = fs.WalkDir(assets, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		b, readErr := assets.ReadFile(path)
+		if readErr != nil {
+			return readErr
+		}
+		h.Write([]byte(path))
+		h.Write(b)
+		return nil
+	})
+	return `"` + hex.EncodeToString(h.Sum(nil))[:16] + `"`
+}()
+
+// revalidated makes the browser check with the gateway on every load while
+// still allowing a 304. http.ServeContent honours an ETag already present on
+// the header, so the conditional request is answered for us.
+func revalidated(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("ETag", assetsETag)
+		w.Header().Set("Cache-Control", "no-cache")
+		next.ServeHTTP(w, r)
+	})
 }
 
 func securityHeaders(next http.Handler) http.Handler {

@@ -15,7 +15,7 @@ build:
 	CGO_ENABLED=0 go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/gateway
 
 run:
-	go run ./cmd/gateway -config gateway.yaml
+	go run ./cmd/gateway serve -config gateway.yaml
 
 test:
 	go test -race -coverprofile=coverage.out ./...

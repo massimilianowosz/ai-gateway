@@ -271,7 +271,7 @@ func (h *ResponsesHandler) handleNativeResponse(
 	}
 	defer resp.Body.Close()
 
-	w.Header().Set(headerUbiquumProvider, dep.ProviderName)
+	setDeploymentHeaders(w, dep)
 	if contentType := resp.Header.Get(headerContentType); contentType != "" {
 		w.Header().Set(headerContentType, contentType)
 	}

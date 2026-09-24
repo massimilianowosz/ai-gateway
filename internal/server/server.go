@@ -12,6 +12,7 @@ import (
 
 	"github.com/ubiquum-ai/ubiquum-ai-gateway/internal/config"
 	"github.com/ubiquum-ai/ubiquum-ai-gateway/internal/console"
+	"github.com/ubiquum-ai/ubiquum-ai-gateway/internal/hivetrace"
 )
 
 // Server is the main HTTP server for the gateway.
@@ -21,6 +22,10 @@ type Server struct {
 	logger      *slog.Logger
 	OpenAPISpec []byte // embedded OpenAPI spec for /docs
 	Console     *console.Manager
+	// TraceStore backs the admin traffic endpoints. nil when hivetrace is off.
+	TraceStore hivetrace.TrafficStore
+	// TraceHub feeds the console's live traffic view.
+	TraceHub *hivetrace.Hub
 }
 
 // New creates a new Server with the given configuration.

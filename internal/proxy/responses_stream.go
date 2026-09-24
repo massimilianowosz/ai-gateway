@@ -511,8 +511,8 @@ func responsesErrorFrom(err error) *responsesError {
 	errMsg := "internal server error"
 	errCode := "internal_error"
 	// Use errors.As (not a plain type assertion): router.Route wraps the
-	// deployment error via fmt.Errorf("all %d attempts failed ...: %w", ...),
-	// so the *provider.UpstreamError is one level deep, not the top-level err.
+	// deployment error in a *router.RouteError, so the
+	// *provider.UpstreamError is one level deep, not the top-level err.
 	var ue *provider.UpstreamError
 	if errors.As(err, &ue) {
 		errMsg = ue.Message
@@ -544,6 +544,7 @@ func responsesErrorFrom(err error) *responsesError {
 // usage limit has been reached").
 func (h *ResponsesHandler) writeSSEError(w http.ResponseWriter, req *responsesRequest, err error) {
 	h.logger.Error("upstream error", "error", err)
+	setFailureHeaders(w, err)
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		return

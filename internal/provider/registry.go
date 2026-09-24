@@ -311,6 +311,27 @@ func (r *Registry) UpstreamAlias(upstreamProvider, providerModel string) (string
 	return name, ok
 }
 
+// UpstreamAliasProviders returns the upstream providers that serve a model
+// under this name through an OAuth pass-through deployment.
+//
+// It exists so a miss can be explained: a name that resolves for nobody looks
+// identical to one that resolves only for a caller paying with their own
+// subscription, and "model not available" sends the operator looking for a
+// deployment that is in fact configured.
+func (r *Registry) UpstreamAliasProviders(providerModel string) []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	var out []string
+	for upstream, aliases := range r.upstreamAliases {
+		if _, ok := aliases[providerModel]; ok {
+			out = append(out, upstream)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 // ListVisibleModels returns models visible to a tenant.
 // - Public models are always visible (filtered by allowedModels if set).
 // - Restricted models are visible ONLY if explicitly listed in grantedModels.

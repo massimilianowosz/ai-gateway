@@ -360,14 +360,15 @@ func extractPromptText(prompt interface{}) string {
 
 func handleUpstreamErr(w http.ResponseWriter, logger *slog.Logger, err error) {
 	logger.Error("upstream error", "error", err)
+	setFailureHeaders(w, err)
 	if strings.Contains(err.Error(), "not found") {
 		writeError(w, http.StatusNotFound, "model_not_found", err.Error())
 		return
 	}
 	// errors.As, not a type assertion: router.Route wraps the deployment error
-	// via fmt.Errorf("all %d attempts failed ...: %w", ...), so the
-	// *provider.UpstreamError sits one level deep and a bare assertion would
-	// miss it — collapsing every routed upstream failure to a generic 502.
+	// in a *router.RouteError, so the *provider.UpstreamError sits one level
+	// deep and a bare assertion would miss it — collapsing every routed
+	// upstream failure to a generic 502.
 	var ue *provider.UpstreamError
 	if errors.As(err, &ue) {
 		status := ue.StatusCode
@@ -403,6 +404,8 @@ func (h *CompletionsHandler) logSpend(r *http.Request, model string, dep *provid
 			uc.PromptTokens = resp.Usage.PromptTokens
 			uc.CompletionTokens = resp.Usage.CompletionTokens
 			uc.TotalTokens = resp.Usage.TotalTokens
+			uc.CachedPromptTokens = resp.Usage.CachedTokens()
+			uc.CacheCreationTokens = resp.Usage.CacheCreation()
 			uc.Cost = record.Cost
 			uc.Filled = true
 		}

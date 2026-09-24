@@ -160,7 +160,7 @@ func (h *CompletionHandler) servePinnedDeployment(w http.ResponseWriter, r *http
 		}
 	}
 	dropParams(&upstreamReq, dep.DropParams)
-	w.Header().Set(headerUbiquumProvider, dep.ProviderName)
+	setDeploymentHeaders(w, dep)
 
 	if req.Stream {
 		h.handleStream(w, r, req.Model, dep, &upstreamReq)
@@ -204,7 +204,7 @@ func (h *CompletionHandler) serveWithRouter(w http.ResponseWriter, r *http.Reque
 		}
 
 		// Set routing info headers for streaming responses
-		w.Header().Set(headerUbiquumProvider, result.Deployment.ProviderName)
+		setDeploymentHeaders(w, result.Deployment)
 		if result.Attempts > 1 {
 			w.Header().Set("X-Ubiquum-Attempts", fmt.Sprintf("%d", result.Attempts))
 		}
@@ -239,7 +239,7 @@ func (h *CompletionHandler) serveWithRouter(w http.ResponseWriter, r *http.Reque
 		)
 
 		// Set routing info headers
-		w.Header().Set(headerUbiquumProvider, result.Deployment.ProviderName)
+		setDeploymentHeaders(w, result.Deployment)
 		if result.Attempts > 1 {
 			w.Header().Set("X-Ubiquum-Attempts", fmt.Sprintf("%d", result.Attempts))
 		}
@@ -356,6 +356,7 @@ func (h *CompletionHandler) relayStream(w http.ResponseWriter, r *http.Request, 
 
 func (h *CompletionHandler) handleUpstreamError(w http.ResponseWriter, err error) {
 	h.logger.Error("upstream error", "error", err)
+	setFailureHeaders(w, err)
 
 	// Model not found → 404
 	if strings.Contains(err.Error(), "not found") {
@@ -572,6 +573,8 @@ func (h *CompletionHandler) recordSpend(r *http.Request, record store.SpendRecor
 		uc.PromptTokens = record.PromptTokens
 		uc.CompletionTokens = record.CompletionTokens
 		uc.TotalTokens = record.TotalTokens
+		uc.CachedPromptTokens = record.CachedPromptTokens
+		uc.CacheCreationTokens = record.CacheCreationTokens
 		uc.Cost = record.Cost
 		uc.Filled = true
 	}

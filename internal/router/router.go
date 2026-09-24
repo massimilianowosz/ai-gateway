@@ -2,9 +2,11 @@ package router
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math/rand"
+	"net/http"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -133,10 +135,18 @@ func (r *Router) RouteEligible(ctx context.Context, model string, eligible func(
 	var lastErr error
 	attempts := 0
 	var failedProviders []string
+	// A 429 is the provider saying "not from this account, not now". Asking the
+	// same deployment again spends more of the quota that just ran out and
+	// keeps the caller waiting through the backoff for an answer it already
+	// has, so a rate-limited deployment is out for the rest of this request.
+	rateLimited := make(map[string]bool)
 
 	for attempt := 0; attempt <= r.maxRetries; attempt++ {
 		// Pick a deployment, cycling through the ordered list
 		dep := ordered[attempt%len(ordered)]
+		for i := 1; rateLimited[dep.ID] && i < len(ordered); i++ {
+			dep = ordered[(attempt+i)%len(ordered)]
+		}
 
 		// Check circuit breaker
 		if r.circuitBreaker.IsOpen(dep.ID) {
@@ -188,6 +198,16 @@ func (r *Router) RouteEligible(ctx context.Context, model string, eligible func(
 			"error", err,
 		)
 
+		if isRateLimit(err) {
+			rateLimited[dep.ID] = true
+			if len(rateLimited) == len(ordered) {
+				break
+			}
+			// Another account is not rate limited by this one, so there is
+			// nothing to wait out before trying it.
+			continue
+		}
+
 		// Don't wait after the last attempt
 		if attempt < r.maxRetries {
 			// Check if the error is retryable
@@ -209,7 +229,28 @@ func (r *Router) RouteEligible(ctx context.Context, model string, eligible func(
 		}
 	}
 
-	return nil, fmt.Errorf("all %d attempts failed for model %q: %w", attempts, model, lastErr)
+	return nil, &RouteError{Model: model, Attempts: attempts, FailedProviders: failedProviders, Err: lastErr}
+}
+
+// RouteError is a request every attempt failed. It keeps which providers
+// refused, because the caller only sees the last error and the trace would
+// otherwise record a failed turn with no provider at all.
+type RouteError struct {
+	Model           string
+	Attempts        int
+	FailedProviders []string
+	Err             error
+}
+
+func (e *RouteError) Error() string {
+	return fmt.Sprintf("all %d attempts failed for model %q: %v", e.Attempts, e.Model, e.Err)
+}
+
+func (e *RouteError) Unwrap() error { return e.Err }
+
+func isRateLimit(err error) bool {
+	var ue *provider.UpstreamError
+	return errors.As(err, &ue) && ue.StatusCode == http.StatusTooManyRequests
 }
 
 // orderDeployments returns deployments ordered according to the active strategy.

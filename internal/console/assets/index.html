@@ -3,86 +3,234 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="color-scheme" content="dark">
+  <meta name="color-scheme" content="dark light">
   <title>Ubiquum AI Gateway</title>
   <link rel="stylesheet" href="/console/styles.css">
   <link rel="stylesheet" href="/console/extras.css">
 </head>
 <body>
-  <section id="login" class="login-shell hidden">
-    <div class="login-card">
-      <div class="brand-mark">U</div>
-      <p class="eyebrow">SECURE AI EGRESS</p>
-      <h1>Ubiquum AI Gateway</h1>
-      <p class="muted">Sign in to manage this appliance.</p>
-      <form id="login-form">
-        <label>Administrator password<input id="password" type="password" autocomplete="current-password" required autofocus></label>
-        <button type="submit" class="primary">Open console</button>
-        <p id="login-error" class="error"></p>
-      </form>
-    </div>
-  </section>
 
-  <div id="app" class="app-shell hidden">
-    <aside>
-      <div class="brand"><div class="brand-mark small">U</div><div><strong>Ubiquum</strong><span>AI Gateway</span></div></div>
-      <nav>
-        <button data-page="overview" class="active"><span>⌁</span>Overview</button>
-        <button data-page="connections"><span>◇</span>AI connections</button>
-        <button data-page="agents"><span>◎</span>Agents & apps</button>
-        <button data-page="policies"><span>◫</span>Policies & budgets</button>
-        <button data-page="activity"><span>≋</span>Activity</button>
-        <button data-page="system"><span>⚙</span>System</button>
-      </nav>
-      <div class="sidebar-foot"><span class="status-dot"></span>Enforcement active<button id="logout">Sign out</button></div>
-    </aside>
+<svg xmlns="http://www.w3.org/2000/svg" class="icon-sprite" aria-hidden="true">
+  <symbol id="i-dashboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></symbol>
+  <symbol id="i-activity" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3 8 4-16 3 8h4"/></symbol>
+  <symbol id="i-traffic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4M4.9 4.9l2.9 2.9M16.2 16.2l2.9 2.9M19.1 4.9l-2.9 2.9M7.8 16.2l-2.9 2.9"/></symbol>
+  <symbol id="i-plug" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v6M15 2v6M6 8h12v3a6 6 0 0 1-12 0z"/><path d="M12 17v5"/></symbol>
+  <symbol id="i-agents" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="7" width="16" height="12" rx="3"/><path d="M12 3v4M9 12h.01M15 12h.01M9.5 16h5"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 3.5v6c0 4.9-3.4 9-8 10.5-4.6-1.5-8-5.6-8-10.5v-6z"/><path d="M9 12l2 2 4-4"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.6"/></symbol>
+  <symbol id="i-system" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></symbol>
 
-    <main>
-      <header><div><p class="eyebrow">LOCAL APPLIANCE</p><h1 id="page-title">Overview</h1></div><div class="health-pill"><span class="status-dot"></span><span id="health-text">Checking gateway</span></div></header>
-      <section id="content" aria-live="polite"></section>
-    </main>
+  <symbol id="i-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3.6 6.8h16.8M3.6 12h16.8M3.6 17.2h16.8"/></symbol>
+
+  <!-- Agent marks. Geometric glyphs rather than brand logos: each family gets a
+       shape and a colour it keeps everywhere, so a session is recognisable at a
+       glance without shipping somebody else's trademark. -->
+  <symbol id="a-claude-code" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 3v18M4.2 7.5l15.6 9M19.8 7.5l-15.6 9"/></symbol>
+  <symbol id="a-codex" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.8l8 4.6v9.2l-8 4.6-8-4.6V7.4z"/><circle cx="12" cy="12" r="3.1"/></symbol>
+  <symbol id="a-copilot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 13.5c0-3 2.2-5 4.6-5 1.7 0 3.1 1 4.4 1s2.7-1 4.4-1c2.4 0 4.6 2 4.6 5 0 3.3-3.6 5.5-9 5.5s-9-2.2-9-5.5z"/><path d="M9.2 13.2v1.6M14.8 13.2v1.6M12 5.2V8"/></symbol>
+  <symbol id="a-cursor" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 3.2l13.3 7.7-5.9 1.7-2.4 5.7z"/><path d="M14 14.5l4.8 5.8"/></symbol>
+  <symbol id="a-cline" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.8" y="4.2" width="18.4" height="15.6" rx="2.6"/><path d="M7 9.5l3 2.5-3 2.5M12.5 15h4.5"/></symbol>
+  <symbol id="a-gemini" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 2.5c0 5.2 4.3 9.5 9.5 9.5-5.2 0-9.5 4.3-9.5 9.5 0-5.2-4.3-9.5-9.5-9.5 5.2 0 9.5-4.3 9.5-9.5z"/></symbol>
+  <symbol id="a-windsurf" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3.2L6.5 16h7.5z"/><path d="M2.5 19.2c1.7 0 1.7 1.6 3.4 1.6s1.7-1.6 3.4-1.6 1.7 1.6 3.4 1.6 1.7-1.6 3.4-1.6 1.7 1.6 3.4 1.6"/></symbol>
+  <symbol id="a-aider" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16.4 3.9l3.7 3.7L9 18.7l-4.6.9.9-4.6z"/><path d="M13.8 6.5l3.7 3.7"/></symbol>
+  <symbol id="a-opencode" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4.2H7.4a2.6 2.6 0 0 0-2.6 2.6v2.6L2.8 12l2 2.6v2.6a2.6 2.6 0 0 0 2.6 2.6H9"/><path d="M15 4.2h1.6a2.6 2.6 0 0 1 2.6 2.6v2.6l2 2.6-2 2.6v2.6a2.6 2.6 0 0 1-2.6 2.6H15"/></symbol>
+  <symbol id="a-goose" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 20.5c-3 0-5-2.1-5-5 0-4.6 3.7-8.3 8.3-8.3h2.4"/><path d="M14.2 3.4a3.3 3.3 0 1 1 0 6.6h-2v-3.3a3.3 3.3 0 0 1 2-3.3z"/><path d="M12.5 6.4h.01"/></symbol>
+  <symbol id="a-custom" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8.6 8.2L4.2 12l4.4 3.8M15.4 8.2l4.4 3.8-4.4 3.8M13.4 4.6l-2.8 14.8"/></symbol>
+  <symbol id="a-terminal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.8" y="4.2" width="18.4" height="15.6" rx="2.6"/><path d="M6.8 9.6l3 2.4-3 2.4M12.6 15h4.6"/></symbol>
+  <symbol id="a-unknown" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.2"/><path d="M9.6 9.4a2.5 2.5 0 1 1 3.4 2.3c-.7.3-1 .9-1 1.6v.4"/><path d="M12 17.2h.01"/></symbol>
+
+  <!-- MCP category marks, used when a server has no brand icon of its own. -->
+  <symbol id="c-database" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5.8" rx="7.6" ry="3"/><path d="M4.4 5.8v12.4c0 1.7 3.4 3 7.6 3s7.6-1.3 7.6-3V5.8"/><path d="M4.4 12c0 1.7 3.4 3 7.6 3s7.6-1.3 7.6-3"/></symbol>
+  <symbol id="c-code" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8.6 8.2L4.2 12l4.4 3.8M15.4 8.2l4.4 3.8-4.4 3.8M13.4 4.6l-2.8 14.8"/></symbol>
+  <symbol id="c-cloud" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.4 18.8H7a4.4 4.4 0 0 1-.6-8.76 5.8 5.8 0 0 1 11.2 1.2 3.8 3.8 0 0 1-.2 7.56z"/></symbol>
+  <symbol id="c-chat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.4 12.6c0 3.6-3.4 6.6-7.6 6.6-1 0-2-.2-2.9-.5l-4.3 1.5 1.4-3.6a6.2 6.2 0 0 1-1.8-4c0-3.6 3.4-6.6 7.6-6.6s7.6 3 7.6 6.6z"/></symbol>
+  <symbol id="c-doc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13.6 2.8H7a2.2 2.2 0 0 0-2.2 2.2v14a2.2 2.2 0 0 0 2.2 2.2h10a2.2 2.2 0 0 0 2.2-2.2V8.4z"/><path d="M13.6 2.8v5.6h5.6M8.6 13h6.8M8.6 16.6h6.8"/></symbol>
+  <symbol id="c-pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2.8 12.4h4l2.6 6.4 5-13.6 2.6 7.2h4.2"/></symbol>
+  <symbol id="c-calendar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.2" y="5" width="17.6" height="15.8" rx="2.4"/><path d="M3.2 10h17.6M8.4 2.8v4.4M15.6 2.8v4.4"/></symbol>
+  <symbol id="c-office" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3.4" y="3.4" width="7.6" height="7.6" rx="1"/><rect x="13" y="3.4" width="7.6" height="7.6" rx="1"/><rect x="3.4" y="13" width="7.6" height="7.6" rx="1"/><rect x="13" y="13" width="7.6" height="7.6" rx="1"/></symbol>
+  <symbol id="c-board" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.2" y="3.8" width="17.6" height="16.4" rx="2.4"/><path d="M8.6 8.2v8.6M15.4 8.2v4.6"/></symbol>
+  <symbol id="c-people" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9.4" cy="8.4" r="3.4"/><path d="M2.8 20.2a6.6 6.6 0 0 1 13.2 0"/><path d="M16.4 5.4a3.4 3.4 0 0 1 0 6.6M17.6 14.4a5.6 5.6 0 0 1 3.6 5.2"/></symbol>
+  <symbol id="c-lifebuoy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.2"/><circle cx="12" cy="12" r="3.6"/><path d="M5.5 5.5l3.9 3.9M14.6 14.6l3.9 3.9M18.5 5.5l-3.9 3.9M9.4 14.6l-3.9 3.9"/></symbol>
+  <symbol id="c-card" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.6" y="5.2" width="18.8" height="13.6" rx="2.4"/><path d="M2.6 10h18.8M6.4 14.8h3.4"/></symbol>
+  <symbol id="c-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.6" cy="10.6" r="6.8"/><path d="M15.6 15.6l5 5"/></symbol>
+  <symbol id="c-megaphone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.4 10v4a1.8 1.8 0 0 0 1.8 1.8h1.6L18 20.4V3.6L6.8 8.2H5.2A1.8 1.8 0 0 0 3.4 10z"/><path d="M18 8.6a3.4 3.4 0 0 1 0 6.8M7 16v4.4"/></symbol>
+  <symbol id="c-pen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16.4 3.9l3.7 3.7L9 18.7l-4.6.9.9-4.6z"/><path d="M13.8 6.5l3.7 3.7"/></symbol>
+  <symbol id="c-mail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.6" y="4.6" width="18.8" height="14.8" rx="2.4"/><path d="M3.4 6.8l8.6 6 8.6-6"/></symbol>
+  <symbol id="c-browser" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.8" y="4.2" width="18.4" height="15.6" rx="2.4"/><path d="M2.8 9h18.4M6.4 6.6h.01M9.4 6.6h.01"/></symbol>
+  <symbol id="c-model" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2.6"/><circle cx="12" cy="4.4" r="1.8"/><circle cx="12" cy="19.6" r="1.8"/><circle cx="5.4" cy="8.2" r="1.8"/><circle cx="18.6" cy="8.2" r="1.8"/><circle cx="5.4" cy="15.8" r="1.8"/><circle cx="18.6" cy="15.8" r="1.8"/><path d="M12 6.2v3.2M12 14.6v3.2M7 9.1l2.7 1.6M14.3 13.3l2.3 1.4M7 14.9l2.7-1.6M14.3 10.7l2.3-1.4"/></symbol>
+  <symbol id="c-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4.4" y="10.4" width="15.2" height="10.2" rx="2.4"/><path d="M7.8 10.4V7.6a4.2 4.2 0 0 1 8.4 0v2.8"/></symbol>
+  <!-- Session stat marks: Lucide (ISC), stroke thinned to 1.8 to match the set above. -->
+  <symbol id="s-turns" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M16 10a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 14.286V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2zm4-1a2 2 0 0 1 2 2v10.286a.71.71 0 0 1-1.212.502l-2.202-2.202A2 2 0 0 0 17.172 19H10a2 2 0 0 1-2-2v-1"/></symbol>
+  <symbol id="s-in" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 17V3m-6 8l6 6l6-6m1 10H5"/></symbol>
+  <symbol id="s-out" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="m18 9l-6-6l-6 6m6-6v14m-7 4h14"/></symbol>
+  <symbol id="s-cost" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"><path d="M13.744 17.736a6 6 0 1 1-7.48-7.48M15 6h1v4"/><path d="m6.134 14.768l.866-.5l2 3.464"/><circle cx="16" cy="8" r="6"/></g></symbol>
+  <symbol id="s-tools" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z"/></symbol>
+  <symbol id="s-clock" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"><path d="M10 2h4m-2 12l3-3"/><circle cx="12" cy="14" r="8"/></g></symbol>
+  <symbol id="s-alert" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="m21.73 18l-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3M12 9v4m0 4h.01"/></symbol>
+  <symbol id="s-read" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 5v16m8.001-2A2 2 0 0 0 22 17V5a2 2 0 0 0-1.999-2L16 3.002A5 5 0 0 0 12 5a5 5 0 0 0-4-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 1.999 2H8a5 5 0 0 1 4 2a5 5 0 0 1 4-2z"/></symbol>
+  <symbol id="s-write" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497zM15 5l4 4"/></symbol>
+  <symbol id="s-shield" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1zm-8-5v4m0 4h.01"/></symbol>
+</svg>
+
+<section id="login" class="login-shell hidden">
+  <div class="login-card">
+    <div class="login-mark">U</div>
+    <p class="eyebrow">Appliance console</p>
+    <h1>Ubiquum AI Gateway</h1>
+    <p class="muted">Sign in to manage this appliance.</p>
+    <form id="login-form">
+      <label>Administrator password
+        <input id="password" type="password" autocomplete="current-password" required autofocus>
+      </label>
+      <button type="submit" class="primary">Open console</button>
+      <p id="login-error" class="error"></p>
+    </form>
   </div>
+</section>
 
-  <dialog id="connection-dialog">
-    <form id="connection-form" method="dialog">
-      <div class="dialog-head"><div><p class="eyebrow">NEW BYOK CONNECTION</p><h2>Connect an AI provider</h2></div><button type="button" class="icon-button" data-close>×</button></div>
-      <div class="form-grid">
-        <label>Display name<input name="name" placeholder="Production OpenAI" required></label>
-        <label>Provider<select name="provider_type" required><option value="openai">OpenAI</option><option value="anthropic">Anthropic</option><option value="azure_openai">Azure OpenAI</option><option value="google_ai">Google AI</option><option value="bedrock">AWS Bedrock</option><option value="openai_compatible">OpenAI compatible</option></select></label>
-        <label class="wide">API endpoint<input name="api_base" placeholder="https://api.openai.com/v1"></label>
-        <label class="wide">API key<input name="api_key" type="password" autocomplete="off" required></label>
-        <label>Region<input name="region" placeholder="eu-west-1"></label>
-        <label>API version<input name="api_version" placeholder="2024-10-21"></label>
-        <label class="wide">Models <span>one per line: public-name = provider-name</span><textarea name="models" rows="5" placeholder="gpt-4o = gpt-4o&#10;gpt-4o-mini = gpt-4o-mini" required></textarea></label>
+<div id="app" class="app-shell hidden">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">U</div>
+      <div><strong>AI Gateway</strong><span>Appliance console</span></div>
+    </div>
+    <nav>
+      <p>Monitor</p>
+      <button data-page="overview" class="active"><svg class="ico"><use href="#i-dashboard"/></svg>Dashboard</button>
+      <button data-page="traffic"><svg class="ico"><use href="#i-traffic"/></svg>AI traffic</button>
+      <p>Configure</p>
+      <button data-page="connections"><svg class="ico"><use href="#i-plug"/></svg>AI connections</button>
+      <button data-page="agents"><svg class="ico"><use href="#i-agents"/></svg>Agents &amp; apps</button>
+      <button data-page="policies"><svg class="ico"><use href="#i-shield"/></svg>Policies &amp; budgets</button>
+      <button data-page="watchlist"><svg class="ico"><use href="#i-eye"/></svg>Sensitive data</button>
+      <p>Appliance</p>
+      <button data-page="system"><svg class="ico"><use href="#i-system"/></svg>System</button>
+    </nav>
+    <div class="sidebar-foot">
+      <div class="health-pill"><span class="status-dot"></span><span id="health-text">Checking gateway</span></div>
+      <button id="logout">Sign out</button>
+    </div>
+  </aside>
+
+  <div class="workspace">
+    <header class="topbar">
+      <button class="mobile-menu ghost" id="mobile-menu" aria-label="Open navigation"><svg class="icon" aria-hidden="true"><use href="#i-menu"/></svg></button>
+      <h1 id="page-title">Dashboard</h1>
+      <div class="topbar-actions">
+        <span id="topbar-slot"></span>
+        <button class="refresh-button" id="refresh">Refresh</button>
       </div>
-      <p id="connection-error" class="error"></p>
-      <div class="dialog-actions"><button type="button" data-close>Cancel</button><button type="submit" class="primary">Save encrypted connection</button></div>
-    </form>
-  </dialog>
-  <dialog id="identity-dialog">
-    <form id="identity-form" method="dialog">
-      <div class="dialog-head"><div><p class="eyebrow">NEW RUNTIME IDENTITY</p><h2>Authorize an agent or application</h2></div><button type="button" class="icon-button" data-close>×</button></div>
-      <div class="form-grid">
-        <label class="wide">Name<input name="name" placeholder="Support agent — production" required></label>
-        <label>Hard budget (USD)<input name="budget" type="number" min="0" step="0.01" value="25"></label>
-        <label>Rate limit (RPM)<input name="rate_limit" type="number" min="0" step="1" value="60"></label>
-        <label class="wide">Allowed models <span>comma separated; empty allows every public model</span><input name="models" placeholder="gpt-4o, claude-sonnet"></label>
-      </div>
-      <p id="identity-error" class="error"></p>
-      <div class="dialog-actions"><button type="button" data-close>Cancel</button><button type="submit" class="primary">Create identity</button></div>
-    </form>
-  </dialog>
-  <dialog id="secret-dialog">
-    <div class="secret-panel"><p class="eyebrow">SHOWN ONCE</p><h2>Runtime credential created</h2><p class="muted">Copy this key now. Only its hash is retained by the gateway.</p><div id="new-secret" class="secret-value code"></div><div class="dialog-actions"><button id="copy-secret" class="primary">Copy key</button><button data-close>Done</button></div></div>
-  </dialog>
-  <dialog id="budget-dialog">
-    <form id="budget-form" method="dialog">
-      <div class="dialog-head"><div><p class="eyebrow">ENFORCEMENT POLICY</p><h2>Update budget and access</h2></div><button type="button" class="icon-button" data-close>×</button></div>
-      <input name="key" type="hidden">
-      <div class="form-grid"><label>Hard budget (USD)<input name="budget" type="number" min="0" step="0.01"></label><label>Rate limit (RPM)<input name="rate_limit" type="number" min="0" step="1"></label><label class="wide">Allowed models <span>comma separated</span><input name="models"></label><label class="wide switch-label"><input name="active" type="checkbox"> Identity enabled</label></div>
-      <p id="budget-error" class="error"></p><div class="dialog-actions"><button type="button" data-close>Cancel</button><button type="submit" class="primary">Apply policy</button></div>
-    </form>
-  </dialog>
-  <script src="/console/app.js" defer></script>
+    </header>
+    <main><section id="content" aria-live="polite"></section></main>
+  </div>
+  <button class="nav-scrim" id="nav-scrim" aria-label="Close navigation"></button>
+</div>
+
+<dialog id="connection-dialog">
+  <form id="connection-form" method="dialog">
+    <div class="dialog-head">
+      <div><p class="eyebrow">New BYOK connection</p><h2>Connect an AI provider</h2></div>
+      <button type="button" class="icon-button" data-close aria-label="Close">&times;</button>
+    </div>
+    <div class="form-grid">
+      <label>Display name<input name="name" placeholder="Production OpenAI" required></label>
+      <label>Provider
+        <select name="provider_type" required>
+          <option value="openai">OpenAI</option>
+          <option value="anthropic">Anthropic</option>
+          <option value="azure_openai">Azure OpenAI</option>
+          <option value="google_ai">Google AI</option>
+          <option value="bedrock">AWS Bedrock</option>
+          <option value="openai_compatible">OpenAI compatible</option>
+        </select>
+      </label>
+      <label class="wide">API endpoint<input name="api_base" placeholder="https://api.openai.com/v1"></label>
+      <label class="wide">API key<input name="api_key" type="password" autocomplete="off" required></label>
+      <label>Region<input name="region" placeholder="eu-west-1"></label>
+      <label>API version<input name="api_version" placeholder="2024-10-21"></label>
+      <label class="wide">Models <span>one per line: public-name = provider-name</span>
+        <textarea name="models" rows="5" placeholder="gpt-4o = gpt-4o&#10;gpt-4o-mini = gpt-4o-mini" required></textarea>
+      </label>
+    </div>
+    <p id="connection-error" class="error"></p>
+    <div class="dialog-actions">
+      <button type="button" class="ghost" data-close>Cancel</button>
+      <button type="submit" class="primary">Save encrypted connection</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="identity-dialog">
+  <form id="identity-form" method="dialog">
+    <div class="dialog-head">
+      <div><p class="eyebrow">New runtime identity</p><h2>Authorize an agent or application</h2></div>
+      <button type="button" class="icon-button" data-close aria-label="Close">&times;</button>
+    </div>
+    <div class="form-grid">
+      <label class="wide">Name<input name="name" placeholder="Support agent — production" required></label>
+      <label>Hard budget (USD)<input name="budget" type="number" min="0" step="0.01" value="25"></label>
+      <label>Rate limit (RPM)<input name="rate_limit" type="number" min="0" step="1" value="60"></label>
+      <label class="wide">Allowed models <span>comma separated; leave empty to allow every public model</span>
+        <input name="models" placeholder="gpt-4o, claude-sonnet">
+      </label>
+    </div>
+    <p id="identity-error" class="error"></p>
+    <div class="dialog-actions">
+      <button type="button" class="ghost" data-close>Cancel</button>
+      <button type="submit" class="primary">Create identity</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="secret-dialog">
+  <div class="secret-panel">
+    <p class="eyebrow">Shown once</p>
+    <h2>Runtime credential created</h2>
+    <p class="muted">Copy this key now. Only its hash is retained by the gateway.</p>
+    <div id="new-secret" class="secret-value code"></div>
+    <div class="dialog-actions">
+      <button id="copy-secret" class="primary">Copy key</button>
+      <button class="ghost" data-close>Done</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="budget-dialog">
+  <form id="budget-form" method="dialog">
+    <div class="dialog-head">
+      <div><p class="eyebrow">Identity policy</p><h2>Update budget and access</h2></div>
+      <button type="button" class="icon-button" data-close aria-label="Close">&times;</button>
+    </div>
+    <input name="key" type="hidden">
+    <div class="form-grid">
+      <label>Hard budget (USD)<input name="budget" type="number" min="0" step="0.01"></label>
+      <label>Rate limit (RPM)<input name="rate_limit" type="number" min="0" step="1"></label>
+      <label class="wide">Allowed models <span>comma separated; leave empty to keep the current list</span><input name="models"></label>
+      <label class="wide switch-label"><input name="active" type="checkbox"> Identity enabled</label>
+    </div>
+    <p id="budget-error" class="error"></p>
+    <div class="dialog-actions">
+      <button type="button" class="ghost" data-close>Cancel</button>
+      <button type="submit" class="primary">Apply policy</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="session-dialog">
+  <div class="session-panel" id="session-detail"></div>
+</dialog>
+
+<dialog id="confirm-dialog" class="confirm-dialog">
+  <form method="dialog">
+    <h2 id="confirm-title"></h2>
+    <p id="confirm-message" class="muted"></p>
+    <div class="dialog-actions">
+      <button value="cancel" class="ghost" id="confirm-cancel">Cancel</button>
+      <button value="ok" id="confirm-ok"></button>
+    </div>
+  </form>
+</dialog>
+
+<script src="/console/app.js" defer></script>
 </body>
 </html>

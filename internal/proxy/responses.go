@@ -243,7 +243,7 @@ func (h *ResponsesHandler) handleComplete(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if dep != nil {
-		w.Header().Set(headerUbiquumProvider, dep.ProviderName)
+		setDeploymentHeaders(w, dep)
 		h.logSpend(r, req.Model, dep, resp, time.Since(start))
 	}
 
@@ -461,6 +461,8 @@ func (h *ResponsesHandler) recordSpend(r *http.Request, record store.SpendRecord
 		uc.PromptTokens = record.PromptTokens
 		uc.CompletionTokens = record.CompletionTokens
 		uc.TotalTokens = record.TotalTokens
+		uc.CachedPromptTokens = record.CachedPromptTokens
+		uc.CacheCreationTokens = record.CacheCreationTokens
 		uc.Cost = record.Cost
 		uc.Filled = true
 	}

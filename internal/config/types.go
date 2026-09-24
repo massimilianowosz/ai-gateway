@@ -23,6 +23,131 @@ type Config struct {
 	Feedback        FeedbackConfig            `yaml:"feedback"`
 	Workflow        WorkflowConfig            `yaml:"workflow"`
 	Responses       ResponsesConfig           `yaml:"responses"`
+	HiveTrace       HiveTraceConfig           `yaml:"hivetrace"`
+}
+
+// HiveTraceConfig controls AI traffic observability: every model call is
+// captured in passthrough, persisted, and later aggregated per session into a
+// picture of what an agent actually did — tools and MCP servers invoked, files
+// touched, tokens and money spent, secrets that appeared in responses.
+//
+// Off by default. Capture costs an extra copy of every response body, and
+// persisting prompts changes the privacy profile of the deployment, so both
+// must be opted into explicitly.
+type HiveTraceConfig struct {
+	Enabled bool   `yaml:"enabled"`
+	Backend string `yaml:"backend"` // "sql" (default, reuses the gateway database) or "clickhouse"
+
+	// SampleRate is the fraction of requests captured, 0..1 (default 1).
+	// Sessions are sampled as a whole rather than per request: half the turns
+	// of a conversation describe nothing, so the hash of the session id decides
+	// and every turn of a sampled session is kept.
+	SampleRate float64 `yaml:"sample_rate"`
+
+	// CaptureBodies persists the prompt and completion text alongside the
+	// metadata. With it off the extractors still run and their findings are
+	// stored, so tool, file and secret analysis works without retaining any
+	// conversation content.
+	CaptureBodies bool `yaml:"capture_bodies"`
+	// Redact runs the PII and secret redactors over captured bodies before they
+	// are written. Default true; see AllowUnredacted.
+	Redact *bool `yaml:"redact"`
+	// AllowUnredacted permits capture_bodies with redact explicitly false. It is
+	// a separate key so that turning redaction off is a deliberate two-step act
+	// rather than a single typo away.
+	AllowUnredacted bool `yaml:"allow_unredacted"`
+
+	// FindingSamples stores the matched text beside each detection and shows it
+	// in the console, for judging whether a detector is finding real data or
+	// noise.
+	//
+	// It is off by default and meant to be turned off again. With it on, the
+	// trace store holds every secret and personal datum the scanners matched,
+	// indexed by what kind it is — a more convenient target than the raw bodies
+	// capture_bodies keeps, not a lesser one. The console says so on every page
+	// while it is enabled, because the setting is easy to leave on by accident
+	// and the values do not expire when it is switched back off.
+	FindingSamples bool `yaml:"finding_samples"`
+
+	// MaxBodyBytes caps how much of each body is retained (default 256KiB).
+	// Beyond the cap the record is marked truncated; the client still receives
+	// the full stream.
+	MaxBodyBytes int `yaml:"max_body_bytes"`
+	// MaxQueue bounds the in-memory ingestion buffer. Traffic capture must never
+	// apply back-pressure to the proxy, so a full queue drops records and
+	// increments a counter instead of blocking (default 4096).
+	MaxQueue int `yaml:"max_queue"`
+
+	FlushInterval   time.Duration `yaml:"flush_interval"`   // how often buffered events are written (default 5s)
+	AnalyzeInterval time.Duration `yaml:"analyze_interval"` // how often session summaries are recomputed (default 1m)
+	Retention       time.Duration `yaml:"retention"`        // how long raw events are kept (default 720h)
+	CleanupInterval time.Duration `yaml:"cleanup_interval"` // how often expired events are purged (default 1h)
+
+	// ClickHouseURL is the HTTP interface of the ClickHouse server, e.g.
+	// http://user:pass@clickhouse:8123/ubiquum. Required for backend clickhouse.
+	ClickHouseURL string `yaml:"clickhouse_url"`
+
+	// TaskClassifier labels sessions whose files and tools do not settle the
+	// task type. Off unless URL is set.
+	TaskClassifier TaskClassifierConfig `yaml:"task_classifier"`
+}
+
+// TaskClassifierConfig points at a hivedecide systemone endpoint. It receives
+// the user's opening request with secrets and PII already masked, once per
+// session; use a local deployment so no prompt leaves the appliance.
+type TaskClassifierConfig struct {
+	URL    string `yaml:"url"`     // e.g. http://127.0.0.1:8000/v1/systemone
+	APIKey string `yaml:"api_key"` // use ${HIVEDECIDE_API_KEY}
+	Model  string `yaml:"model"`   // default spark-4b, the most accurate on task type
+	// MinConfidence is the probability below which the label is discarded
+	// (default 0.5): an unlabelled session is better than a wrong one.
+	MinConfidence float64       `yaml:"min_confidence"`
+	Timeout       time.Duration `yaml:"timeout"` // default 3s
+}
+
+// ShouldRedact reports whether captured bodies are redacted before storage.
+// An omitted key means yes.
+func (c *HiveTraceConfig) ShouldRedact() bool {
+	return c.Redact == nil || *c.Redact
+}
+
+// ApplyDefaults fills zero-value hivetrace fields with sane defaults.
+func (c *HiveTraceConfig) ApplyDefaults() {
+	if c.Backend == "" {
+		c.Backend = "sql"
+	}
+	if c.SampleRate <= 0 || c.SampleRate > 1 {
+		c.SampleRate = 1
+	}
+	if c.MaxBodyBytes <= 0 {
+		c.MaxBodyBytes = 256 * 1024
+	}
+	if c.MaxQueue <= 0 {
+		c.MaxQueue = 4096
+	}
+	// Non-positive rather than zero: a negative duration reaches time.NewTicker,
+	// which panics at startup instead of being corrected here.
+	if c.FlushInterval <= 0 {
+		c.FlushInterval = 5 * time.Second
+	}
+	if c.AnalyzeInterval <= 0 {
+		c.AnalyzeInterval = time.Minute
+	}
+	if c.Retention <= 0 {
+		c.Retention = 30 * 24 * time.Hour
+	}
+	if c.CleanupInterval <= 0 {
+		c.CleanupInterval = time.Hour
+	}
+	if c.TaskClassifier.Model == "" {
+		c.TaskClassifier.Model = "spark-4b"
+	}
+	if c.TaskClassifier.MinConfidence <= 0 || c.TaskClassifier.MinConfidence > 1 {
+		c.TaskClassifier.MinConfidence = 0.5
+	}
+	if c.TaskClassifier.Timeout <= 0 {
+		c.TaskClassifier.Timeout = 3 * time.Second
+	}
 }
 
 // ConsoleConfig controls the local appliance management plane. The console is

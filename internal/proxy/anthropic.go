@@ -176,11 +176,13 @@ func (h *AnthropicHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Enforce per-key model access control
 	if !auth.IsModelAllowed(r.Context(), req.Model, h.registry.IsRestricted(req.Model)) {
-		writeAnthropicError(w, http.StatusForbidden, "permission_error", fmt.Sprintf("this API key does not have access to model %q", req.Model))
+		writeAnthropicError(w, http.StatusForbidden, "permission_error",
+			fmt.Sprintf("this API key does not have access to %s", deniedModelPhrase(r.Context(), req.Model)))
 		return
 	}
 	if !auth.IsProviderAllowed(r.Context(), h.registry.ProvidersFor(req.Model)) {
-		writeAnthropicError(w, http.StatusForbidden, "permission_error", fmt.Sprintf("this API key does not have access to the provider serving model %q", req.Model))
+		writeAnthropicError(w, http.StatusForbidden, "permission_error",
+			fmt.Sprintf("this API key does not have access to the provider serving %s", deniedModelPhrase(r.Context(), req.Model)))
 		return
 	}
 	if allEU, hasDeployments := h.registry.AllDeploymentsEU(req.Model); !auth.IsResidencyAllowed(r.Context(), allEU, hasDeployments) {
@@ -217,11 +219,12 @@ func (h *AnthropicHandler) handleComplete(w http.ResponseWriter, r *http.Request
 	// Verify model exists before routing
 	if _, err := getAuthorizedDeployment(r.Context(), h.registry, req.Model); err != nil {
 		h.logger.Warn("model not found", "model", req.Model, "handler", "complete")
-		writeAnthropicError(w, http.StatusNotFound, "not_found_error", fmt.Sprintf("model %q is not available", req.Model))
+		writeAnthropicError(w, http.StatusNotFound, "not_found_error", unavailableModelPhrase(h.registry, req.Model))
 		return
 	}
 
 	var resp *provider.CompletionResponse
+	var served *provider.Deployment
 
 	if h.router != nil {
 		result, err := h.router.RouteEligible(r.Context(), req.Model, deploymentEligible(r.Context()), func(dep *provider.Deployment) error {
@@ -240,6 +243,7 @@ func (h *AnthropicHandler) handleComplete(w http.ResponseWriter, r *http.Request
 			return
 		}
 
+		served = result.Deployment
 		h.logSpend(r, req.Model, result.Deployment, resp, time.Since(start))
 	} else {
 		dep, err := getAuthorizedDeployment(r.Context(), h.registry, req.Model)
@@ -258,12 +262,14 @@ func (h *AnthropicHandler) handleComplete(w http.ResponseWriter, r *http.Request
 			return
 		}
 
+		served = dep
 		h.logSpend(r, req.Model, dep, resp, time.Since(start))
 	}
 
 	// Convert OpenAI response back to Anthropic format
 	anthropicResp := h.openAIToAnthropicResponse(resp, aReq.Model)
 
+	setDeploymentHeaders(w, served)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(anthropicResp)
 }
@@ -339,6 +345,7 @@ func (h *AnthropicHandler) handleStream(w http.ResponseWriter, r *http.Request, 
 	// did, and hiveStateStatusWriter could not see a failed routed call.
 	// The headers still go out ahead of the first token, which is the long wait
 	// this was meant to cover.
+	setDeploymentHeaders(w, dep)
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -654,6 +661,7 @@ func (h *AnthropicHandler) writeSSE(w http.ResponseWriter, buf *bytes.Buffer, fl
 
 func (h *AnthropicHandler) writeSSEError(w http.ResponseWriter, err error) {
 	h.logger.Error("upstream error", "error", err)
+	setFailureHeaders(w, err)
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		return
@@ -1094,6 +1102,7 @@ func mapOpenAIStopReason(reason string) string {
 
 func (h *AnthropicHandler) handleUpstreamError(w http.ResponseWriter, err error) {
 	h.logger.Error("upstream error", "error", err)
+	setFailureHeaders(w, err)
 
 	// The router wraps the last attempt's error, so the upstream status only
 	// survives an unwrapping match. A type assertion turned every 429 into a
@@ -1207,6 +1216,8 @@ func (h *AnthropicHandler) recordSpend(r *http.Request, record store.SpendRecord
 		uc.PromptTokens = record.PromptTokens
 		uc.CompletionTokens = record.CompletionTokens
 		uc.TotalTokens = record.TotalTokens
+		uc.CachedPromptTokens = record.CachedPromptTokens
+		uc.CacheCreationTokens = record.CacheCreationTokens
 		uc.Cost = record.Cost
 		uc.Filled = true
 	}

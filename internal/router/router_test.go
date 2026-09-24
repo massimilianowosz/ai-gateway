@@ -221,6 +221,61 @@ func TestRouter_MultipleDeployments(t *testing.T) {
 	assert.True(t, len(seen) >= 2, "expected requests to be distributed across deployments, got: %v", seen)
 }
 
+// Retrying a rate-limited account spends more of the quota that ran out and
+// holds the caller through the backoff for the answer it already had.
+func TestRouter_RateLimitIsNotRetriedOnTheSameDeployment(t *testing.T) {
+	rt := testRouter(t, []config.ModelConfig{
+		{Name: "gpt-4", Provider: "mock", ProviderModel: "gpt-4-v1"},
+	})
+
+	attempts := 0
+	_, err := rt.Route(context.Background(), "gpt-4", func(dep *provider.Deployment) error {
+		attempts++
+		return &provider.UpstreamError{StatusCode: 429, Message: "rate limited"}
+	})
+
+	require.Error(t, err)
+	assert.Equal(t, 1, attempts)
+	var ue *provider.UpstreamError
+	require.ErrorAs(t, err, &ue, "the 429 must still reach the client as a 429")
+	assert.Equal(t, 429, ue.StatusCode)
+}
+
+func TestRouter_RateLimitFailsOverToAnotherDeployment(t *testing.T) {
+	rt := testRouter(t, []config.ModelConfig{
+		{Name: "gpt-4", Provider: "mock", ProviderModel: "gpt-4-v1"},
+		{Name: "gpt-4", Provider: "mock", ProviderModel: "gpt-4-v2"},
+	})
+
+	var tried []string
+	result, err := rt.Route(context.Background(), "gpt-4", func(dep *provider.Deployment) error {
+		tried = append(tried, dep.ProviderModel)
+		if len(tried) == 1 {
+			return &provider.UpstreamError{StatusCode: 429, Message: "rate limited"}
+		}
+		return nil
+	})
+
+	require.NoError(t, err)
+	require.Len(t, tried, 2)
+	assert.NotEqual(t, tried[0], tried[1], "the second attempt must go to the other account")
+	assert.Equal(t, 2, result.Attempts)
+}
+
+func TestRouter_FailureNamesTheProvidersThatRefused(t *testing.T) {
+	rt := testRouter(t, []config.ModelConfig{
+		{Name: "gpt-4", Provider: "mock", ProviderModel: "gpt-4-v1"},
+	})
+
+	_, err := rt.Route(context.Background(), "gpt-4", func(dep *provider.Deployment) error {
+		return &provider.UpstreamError{StatusCode: 500, Message: "down"}
+	})
+
+	var re *RouteError
+	require.ErrorAs(t, err, &re)
+	assert.NotEmpty(t, re.FailedProviders)
+}
+
 // --- Circuit Breaker Tests ---
 
 func TestCircuitBreaker_ClosedByDefault(t *testing.T) {

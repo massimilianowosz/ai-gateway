@@ -22,6 +22,12 @@ func RequestedModelFromContext(ctx context.Context) string {
 	return model
 }
 
+// ContextWithRequestedModel records the client's own spelling. Exported for
+// tests and for handlers that resolve an alias themselves.
+func ContextWithRequestedModel(ctx context.Context, model string) context.Context {
+	return context.WithValue(ctx, requestedModelContextKey{}, model)
+}
+
 // ModelAliases canonicalizes the model before cache, guardrail, routing and
 // authorization consume it. It handles the JSON APIs and the X-Ubiquum-Model
 // Files API header, while leaving invalid bodies untouched for the endpoint's

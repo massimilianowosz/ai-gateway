@@ -250,7 +250,7 @@ func (h *FilesHandler) create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set(headerContentType, contentTypeJSON)
-	w.Header().Set(headerUbiquumProvider, dep.ProviderName)
+	setDeploymentHeaders(w, dep)
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(toFileObject(file))
 }

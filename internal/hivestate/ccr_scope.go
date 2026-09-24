@@ -56,6 +56,24 @@ func (s Scope) key() string {
 // SessionHeader is the explicit conversation identifier a client may send.
 const SessionHeader = "x-ubiquum-session"
 
+// ParseMessages reads a request body into the flat analysis view, choosing the
+// parser for the inbound API surface.
+//
+// The per-surface parsers are the only place that knows how each API spells a
+// conversation — content blocks, system prompts held outside the message list,
+// tool calls living in their own field. Exported so other subsystems can reuse
+// that normalisation instead of writing a fourth, subtly different one.
+func ParseMessages(body []byte, api APIFlavor) []Message {
+	switch api {
+	case APIAnthropic:
+		return parseAnthropicMessages(body)
+	case APIResponses:
+		return parseResponsesMessages(body)
+	default:
+		return parseOpenAIMessages(body)
+	}
+}
+
 // DeriveSessionID resolves the session for a request.
 //
 // An explicit header wins. Otherwise the session is derived from the opening

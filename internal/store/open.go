@@ -87,7 +87,7 @@ func Open(cfg config.DatabaseConfig) (Store, error) {
 
 func (s *GormStore) Migrate(ctx context.Context) error {
 	// Always auto-migrate gateway-specific tables.
-	if err := s.db.WithContext(ctx).AutoMigrate(&SpendRecord{}, &User{}, &CacheMetric{}, &HiveStateMetric{}, &TenantSettings{}, &KeyRouteSettings{}, &FeedbackRecord{}, &ProviderFile{}, &StoredResponse{}, &StoredConversation{}, &StoredConversationItem{}, &KeyEvent{}, &SpendDailySummary{}); err != nil {
+	if err := s.db.WithContext(ctx).AutoMigrate(&SpendRecord{}, &User{}, &CacheMetric{}, &HiveStateMetric{}, &TenantSettings{}, &KeyRouteSettings{}, &FeedbackRecord{}, &ProviderFile{}, &StoredResponse{}, &StoredConversation{}, &StoredConversationItem{}, &KeyEvent{}, &SpendDailySummary{}, &TraceEvent{}, &TraceSession{}, &WatchlistTerm{}, &DetectorSetting{}); err != nil {
 		return err
 	}
 	// For non-postgres (e.g. SQLite in tests), also create APIKey/Team tables

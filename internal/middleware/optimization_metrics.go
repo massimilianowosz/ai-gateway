@@ -39,6 +39,39 @@ type optimizationMetrics struct {
 
 	// steerVerbosity counts requests given the terse-output note, by API.
 	steerVerbosity map[string]*atomic.Int64
+
+	// traceEvents counts captured turns by API surface, and traceFindings the
+	// PII/secret detections by "kind:origin". The detector id is deliberately
+	// not a label: the set is open-ended and belongs in the trace store, not in
+	// a metric series.
+	traceEvents   map[string]*atomic.Int64
+	traceFindings map[string]*atomic.Int64
+	traceDropped  atomic.Int64
+}
+
+// RecordTraceEvent records one captured turn stored by hivetrace.
+func (m *Metrics) RecordTraceEvent(api string) {
+	if api == "" {
+		api = "unknown"
+	}
+	m.counterFor(m.opt.traceEvents, api).Add(1)
+}
+
+// RecordTraceDropped records a capture discarded because the ingestion queue
+// was full. A non-zero rate means the trace is incomplete.
+func (m *Metrics) RecordTraceDropped() {
+	m.opt.traceDropped.Add(1)
+}
+
+// RecordTraceFinding records one PII or secret detection.
+func (m *Metrics) RecordTraceFinding(kind, origin string) {
+	if kind == "" {
+		kind = "unknown"
+	}
+	if origin == "" {
+		origin = "unknown"
+	}
+	m.counterFor(m.opt.traceFindings, kind+":"+origin).Add(1)
 }
 
 // RecordSteeringVerbosity records one request given the terse-output note.
@@ -194,6 +227,32 @@ func (m *Metrics) writeOptimizationMetrics(w io.Writer) {
 	fmt.Fprintf(w, "# HELP ubiquum_steering_verbosity_total Requests given the terse-output note, by API.\n")
 	fmt.Fprintf(w, "# TYPE ubiquum_steering_verbosity_total counter\n")
 	m.writeLabelled(w, "ubiquum_steering_verbosity_total", "api", m.opt.steerVerbosity)
+
+	fmt.Fprintf(w, "# HELP ubiquum_trace_events_total Model calls captured by hivetrace, by API.\n")
+	fmt.Fprintf(w, "# TYPE ubiquum_trace_events_total counter\n")
+	m.writeLabelled(w, "ubiquum_trace_events_total", "api", m.opt.traceEvents)
+
+	fmt.Fprintf(w, "# HELP ubiquum_trace_dropped_total Captures discarded because the ingestion queue was full.\n")
+	fmt.Fprintf(w, "# TYPE ubiquum_trace_dropped_total counter\n")
+	fmt.Fprintf(w, "ubiquum_trace_dropped_total %d\n", m.opt.traceDropped.Load())
+
+	fmt.Fprintf(w, "# HELP ubiquum_trace_findings_total PII and secret detections in captured traffic.\n")
+	fmt.Fprintf(w, "# TYPE ubiquum_trace_findings_total counter\n")
+	m.opt.mu.RLock()
+	findingKeys := make([]string, 0, len(m.opt.traceFindings))
+	for k := range m.opt.traceFindings {
+		findingKeys = append(findingKeys, k)
+	}
+	sort.Strings(findingKeys)
+	for _, k := range findingKeys {
+		parts := splitMetricKey(k)
+		if len(parts) != 2 {
+			continue
+		}
+		fmt.Fprintf(w, "ubiquum_trace_findings_total{kind=%q,origin=%q} %d\n",
+			parts[0], parts[1], m.opt.traceFindings[k].Load())
+	}
+	m.opt.mu.RUnlock()
 }
 
 // writeLabelled emits a single-label counter family in stable order.
