@@ -1988,6 +1988,7 @@ function turnScope(e) {
   return {
     models: e.model ? [e.model] : [],
     providers: e.provider ? [e.provider] : [],
+    tool_calls: (e.tools || []).length,
     tools: [...counts.values()],
     mcp_servers: [...servers].map(([server, calls]) => ({ server, calls })),
     files_read: (e.files || []).filter((f) => f.operation !== "write").map((f) => f.path),
