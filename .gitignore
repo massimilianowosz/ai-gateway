@@ -28,6 +28,10 @@ test/results/
 test/cache/results/
 test/cache/fixtures/
 test/benchmarks/fixtures/
+# Realistic-looking (synthetic, non-functional) secrets used to benchmark the
+# detectors locally. Kept out of git so no secret-shaped string, real or not,
+# ever touches the remote history or a scanner.
+test/benchmarks/sensitive_corpus.json
 
 # Docs (generated)
 docs/*.pdf
