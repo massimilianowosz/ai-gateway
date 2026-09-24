@@ -178,6 +178,7 @@ const PAGES = {
   agents: { title: "Agents & applications", render: renderAgents },
   policies: { title: "Policies & budgets", render: renderPolicies },
   watchlist: { title: "Sensitive data", render: renderWatchlist },
+  firewall: { title: "Firewall", render: renderFirewall },
   system: { title: "System", render: renderSystem },
 };
 
@@ -391,7 +392,7 @@ function renderOverviewInsights(events, sessions = []) {
       findingKind.set(label, f.kind);
     }
   }
-  const tone = { secret: "danger", pii: "warning", watchlist: "info" };
+  const tone = { secret: "danger", pii: "warning", watchlist: "info", firewall: "danger" };
   const findingRows = topRows(findingTotals, 5,
     (label) => `<i class="sev-dot ${tone[findingKind.get(label)] || "info"}"></i>`);
 
@@ -1154,7 +1155,7 @@ function summarise(events) {
     for (const f of e.findings || []) {
       const n = Number(f.occurrences || 0);
       out.findings += n;
-      if (f.kind === "secret") out.secrets += n; else out.pii += n;
+      if (f.kind === "secret") out.secrets += n; else if (f.kind === "pii") out.pii += n; else if (f.kind === "firewall") out.firewall = (out.firewall || 0) + n;
     }
   }
   return out;
@@ -2150,15 +2151,16 @@ const FINDING_GROUPS = [
   ["secret", "Secrets", "danger"],
   ["pii", "Personal data", "warning"],
   ["watchlist", "Watchlist", "info"],
+  ["firewall", "Firewall", "danger"],
 ];
 
 // Words a detector id spells that plain sentence case would get wrong.
 const FINDING_WORDS = { IP: "IP", IBAN: "IBAN", URL: "URL", API: "API", AWS: "AWS", JWT: "JWT", SSH: "SSH", GITHUB: "GitHub", GITLAB: "GitLab", OPENAI: "OpenAI", PEM: "PEM", US: "US", SSN: "SSN", IVA: "IVA" };
 
-// EMAIL_ADDRESS reads as "Email address". A watchlist finding is already named
-// by the operator, so it is left exactly as they wrote it.
+// EMAIL_ADDRESS reads as "Email address". A watchlist or firewall finding is
+// already named by the operator, so it is left exactly as they wrote it.
 function findingLabel(f) {
-  if (f.kind === "watchlist") return f.type;
+  if (f.kind === "watchlist" || f.kind === "firewall") return f.type;
   return String(f.type).split("_").map((w, i) => {
     const up = w.toUpperCase();
     if (FINDING_WORDS[up]) return FINDING_WORDS[up];
@@ -2532,6 +2534,125 @@ function bindWatchlist() {
     })) return;
     await api(`/v1/watchlist/delete?id=${encodeURIComponent(b.dataset.deleteTerm)}`, { method: "POST" });
     await renderWatchlist();
+  }));
+}
+
+/* --- Firewall --------------------------------------------------------------- */
+
+// Declares MCP servers, tools and file paths a session's traffic must not
+// touch. Shadow mode only for now: a match is reported as a "Firewall"
+// finding on the turn, the same way a watchlist term or a leaked secret is,
+// but nothing is stripped or refused yet. Turning that into enforcement needs
+// a synchronous chokepoint in the proxy's response path — this evaluates
+// after the fact, on the same worker that already extracts tools and files
+// for tracing.
+const FIREWALL_KINDS = [
+  ["mcp_server", "MCP server", "e.g. shodan_search"],
+  ["tool", "Tool", "e.g. Bash"],
+  ["file_read", "File read", "e.g. **/.env"],
+  ["file_write", "File write", "e.g. **/.github/workflows/*"],
+];
+
+async function renderFirewall() {
+  const rules = await safe("/v1/firewall", { data: [] }).then((r) => r.data || []);
+
+  const groupTable = (kind, title) => {
+    const rows = rules.filter((r) => r.kind === kind);
+    if (!rows.length) return "";
+    return `
+      <div class="sens-group">
+        <div class="sens-group-head">${title}<b>${num(rows.length)}</b></div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Reported as</th><th>Pattern</th><th>Watching</th><th></th></tr></thead>
+          <tbody>${rows.map((t) => `
+            <tr class="${t.enabled ? "" : "row-muted"}">
+              <td><strong>${esc(t.label)}</strong></td>
+              <td><code>${esc(t.pattern)}</code></td>
+              <td><input type="checkbox" role="switch" class="toggle" data-toggle-rule="${t.id}" ${t.enabled ? "checked" : ""}
+                aria-label="${t.enabled ? "Watching" : "Paused"}: ${esc(t.label)}" title="${t.enabled ? "Watching" : "Paused"}" /></td>
+              <td class="row-actions">
+                <button class="table-action danger" data-delete-rule="${t.id}" data-label="${esc(t.label)}">Remove</button>
+              </td>
+            </tr>`).join("")}</tbody></table></div>
+      </div>`;
+  };
+
+  const groups = FIREWALL_KINDS.map(([kind, title]) => groupTable(kind, title)).join("");
+
+  $("#content").innerHTML = `
+    <div class="page-intro">
+      <div>
+        <p>MCP servers, tools and file paths this organisation wants called out. Shadow mode: a match is reported on the turn like any other finding, nothing is blocked yet.</p>
+      </div>
+    </div>
+
+    <div class="grid split-2-1">
+      <div class="card flush">
+        <div class="card-head"><h2>Rules</h2><span class="muted sub">${num(rules.length)} configured</span></div>
+        ${groups || emptyState("No firewall rules yet", "Add one and it will be reported in AI traffic from the next turn.")}
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>Add a rule</h2></div>
+        <form id="firewall-form" class="stack-form">
+          <label>Kind
+            <select name="kind">${FIREWALL_KINDS.map(([kind, title]) => `<option value="${kind}">${esc(title)}</option>`).join("")}</select>
+          </label>
+          <label>Reported as
+            <input name="label" required maxlength="60" placeholder="Miro (unapproved MCP)" />
+            <span class="field-hint">The finding is shown under this name.</span>
+          </label>
+          <label>Pattern
+            <input name="pattern" required maxlength="200" placeholder="**/.env" />
+            <span class="field-hint">Matched as written, case-insensitive. Use <code>*</code> for any run of non-space characters.</span>
+          </label>
+          <div class="pattern-help">
+            <div><code>shodan*</code><span>any MCP server whose name starts with it</span></div>
+            <div><code>**/.env</code><span>an .env file at any depth</span></div>
+            <div><code>**/secrets/*</code><span>anything inside a secrets/ directory</span></div>
+          </div>
+          <p id="firewall-error" class="error"></p>
+          <button type="submit" class="primary">Add rule</button>
+        </form>
+      </div>
+    </div>`;
+
+  bindFirewall();
+}
+
+function bindFirewall() {
+  $("#firewall-form").onsubmit = async (e) => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    $("#firewall-error").textContent = "";
+    try {
+      await api("/v1/firewall", {
+        method: "POST",
+        body: JSON.stringify({ kind: f.get("kind"), label: f.get("label"), pattern: f.get("pattern") }),
+      });
+      await renderFirewall();
+    } catch (err) {
+      $("#firewall-error").textContent = err.message || "Could not add that rule";
+    }
+  };
+
+  $$("[data-toggle-rule]").forEach((b) => (b.onchange = async () => {
+    b.disabled = true;
+    await api(`/v1/firewall/update?id=${encodeURIComponent(b.dataset.toggleRule)}`, {
+      method: "POST",
+      body: JSON.stringify({ enabled: b.checked }),
+    });
+    await renderFirewall();
+  }));
+
+  $$("[data-delete-rule]").forEach((b) => (b.onclick = async () => {
+    if (!await confirmDialog({
+      title: `Remove the “${b.dataset.label}” rule?`,
+      message: "Findings already recorded stay in the traffic.",
+      confirm: "Remove", danger: true,
+    })) return;
+    await api(`/v1/firewall/delete?id=${encodeURIComponent(b.dataset.deleteRule)}`, { method: "POST" });
+    await renderFirewall();
   }));
 }
 

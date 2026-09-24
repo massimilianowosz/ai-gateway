@@ -178,6 +178,23 @@ func (s *WatchlistScanner) findings(text string, max int) []DetectorMatch {
 	return out
 }
 
+// Match reports whether any term matches the candidate as a whole — an MCP
+// server name, a bare tool name or a file path — rather than searching for a
+// mention inside free text. mentions' path exclusion below does not apply
+// here: a firewall rule written for a file pattern exists specifically to
+// match paths, not to ignore them.
+func (s *WatchlistScanner) Match(candidate string) (label string, ok bool) {
+	if s == nil || candidate == "" {
+		return "", false
+	}
+	for _, t := range s.terms {
+		if t.re.MatchString(candidate) {
+			return t.label, true
+		}
+	}
+	return "", false
+}
+
 // mentions returns the matches that are not part of a file path. A name in
 // /Users/<name>/ is the machine's account, not a mention of the person, and on
 // an agent's traffic it would outnumber every real hit.

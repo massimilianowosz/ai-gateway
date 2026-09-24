@@ -42,6 +42,9 @@ const (
 	// KindWatchlist is a term the operator declared, so its Type is their
 	// label rather than a detector id.
 	KindWatchlist = "watchlist"
+	// KindFirewall is an MCP server, tool or file a declared rule denies. Like
+	// KindWatchlist its Type is the rule's label, not a detector id.
+	KindFirewall = "firewall"
 )
 
 // Origins a finding can have.

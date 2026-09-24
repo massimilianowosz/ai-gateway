@@ -73,6 +73,8 @@ type Recorder struct {
 	entities anonymizationConfigStore
 	terms    watchlistStore
 	settings detectorSettingsStore
+	rules    firewallRuleStore
+	fw       *firewallEvaluator
 	tasks    *taskClassifier
 	metrics  Metrics
 	hub      *Hub
@@ -115,6 +117,10 @@ func NewRecorder(ts TrafficStore, db store.Store, cfg config.HiveTraceConfig, me
 	if ss, ok := db.(detectorSettingsStore); ok {
 		r.settings = ss
 		r.reloadDetectorSettings()
+	}
+	if fs, ok := db.(firewallRuleStore); ok {
+		r.rules = fs
+		r.reloadFirewallRules()
 	}
 	go r.run()
 	return r
@@ -214,6 +220,7 @@ func (r *Recorder) run() {
 		case <-reload.C:
 			r.reloadWatchlist()
 			r.reloadDetectorSettings()
+			r.reloadFirewallRules()
 		case <-r.stopCh:
 			return
 		}
@@ -303,6 +310,7 @@ func (r *Recorder) process(c *capture, entityCache map[string]*[]string) (Event,
 	for _, call := range calls {
 		ev.Tools = append(ev.Tools, call.ToolInvocation)
 	}
+	firewallHits := r.fw.findings(ev.Tools, ev.Files)
 
 	ev.Agent, ev.AgentVia = fingerprintAgent(ev.ClientProduct, c.clientApp, declaredToolNames(c.requestBody), ev.Tools, c.upstream)
 
@@ -334,6 +342,7 @@ func (r *Recorder) process(c *capture, entityCache map[string]*[]string) (Event,
 		r.det.findings(requestText, OriginRequest, piiEntities, samples),
 		r.det.findings(responseText, OriginResponse, piiEntities, samples)...,
 	)
+	ev.Findings = append(ev.Findings, firewallHits...)
 
 	if r.cfg.CaptureBodies {
 		reqBody, respBody := requestText, responseText

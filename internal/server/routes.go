@@ -593,6 +593,11 @@ func RegisterRoutes(s *Server, registry *provider.Registry, rt *router.Router, a
 		{"POST", "/v1/watchlist/delete", adminHandler.DeleteWatchlistTerm},
 		{"GET", "/v1/detectors", adminHandler.GetDetectors},
 		{"POST", "/v1/detectors/update", adminHandler.UpdateDetector},
+		// Firewall (appliance-declared MCP/tool/file rules, shadow mode: reported as findings, not yet enforced)
+		{"GET", "/v1/firewall", adminHandler.GetFirewallRules},
+		{"POST", "/v1/firewall", adminHandler.CreateFirewallRule},
+		{"POST", "/v1/firewall/update", adminHandler.UpdateFirewallRule},
+		{"POST", "/v1/firewall/delete", adminHandler.DeleteFirewallRule},
 		// Users
 		{"POST", "/v1/user/create", adminHandler.CreateUser},
 		{"GET", "/v1/user/info", adminHandler.GetUser},

@@ -141,3 +141,34 @@ func TestWatchlist_FileNamesURLsAndAddressesStillCount(t *testing.T) {
 		assert.Equal(t, 1, found[0].Count, text)
 	}
 }
+
+// Match is the firewall's entry point: unlike Findings, a path is exactly the
+// kind of candidate it exists to check, not a false positive to filter out.
+func TestWatchlist_MatchChecksTheWholeCandidate(t *testing.T) {
+	s := NewWatchlistScanner([]WatchTerm{
+		{Label: "Secrets", Pattern: "**/.env"},
+		{Label: "Miro", Pattern: "*miro*"},
+	})
+
+	label, ok := s.Match("/Users/massimilianowosz/code/app/.env")
+	require.True(t, ok)
+	assert.Equal(t, "Secrets", label)
+
+	label, ok = s.Match("claude_ai_Miro")
+	require.True(t, ok)
+	assert.Equal(t, "Miro", label)
+
+	_, ok = s.Match("/Users/massimilianowosz/code/app/main.go")
+	assert.False(t, ok)
+}
+
+func TestWatchlist_MatchOnEmptyScannerIsInert(t *testing.T) {
+	var s *WatchlistScanner
+	_, ok := s.Match("anything")
+	assert.False(t, ok)
+
+	s = NewWatchlistScanner(nil)
+	_, ok = s.Match("anything")
+	assert.False(t, ok)
+}
+
