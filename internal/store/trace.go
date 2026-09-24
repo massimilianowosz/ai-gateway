@@ -229,9 +229,14 @@ func (s *GormStore) GetTraceSession(ctx context.Context, sessionID string) (*Tra
 func (s *GormStore) ListTraceSessions(ctx context.Context, filter TraceFilter) ([]TraceSession, error) {
 	// No model column here: a session spans models, and gw_trace_sessions keeps
 	// them as a list. Filtering by model is an event-level question.
-	q := applyTraceFilter(s.db.WithContext(ctx).Model(&TraceSession{}), filter, "started_at", "")
+	//
+	// Filtered and ordered by ended_at, not started_at: a long session that
+	// began before the window but is still going belongs in "last 24 hours" as
+	// much as one that just started, and "since" is asking when it was last
+	// seen, not when it opened.
+	q := applyTraceFilter(s.db.WithContext(ctx).Model(&TraceSession{}), filter, "ended_at", "")
 	var out []TraceSession
-	if err := q.Order("started_at DESC").Find(&out).Error; err != nil {
+	if err := q.Order("ended_at DESC").Find(&out).Error; err != nil {
 		return nil, err
 	}
 	return out, nil

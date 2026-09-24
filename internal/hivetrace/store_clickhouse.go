@@ -307,8 +307,12 @@ func (s *clickHouseStore) GetSession(ctx context.Context, sessionID string) (*Se
 func (s *clickHouseStore) ListSessions(ctx context.Context, filter Filter) ([]SessionSummary, error) {
 	// FINAL forces the merge of pending ReplacingMergeTree versions, so a
 	// summary recomputed seconds ago is not read back as its previous version.
-	query := fmt.Sprintf("SELECT * FROM %s.%s FINAL%s ORDER BY started_at DESC%s FORMAT JSONEachRow",
-		s.database, clickHouseSessionsTable, clickHouseWhere(filter, "started_at", ""), clickHouseLimit(filter))
+	//
+	// Filtered and ordered by ended_at, not started_at: "since" asks when a
+	// session was last seen, and a long session that began before the window
+	// but is still going belongs in it as much as one that just started.
+	query := fmt.Sprintf("SELECT * FROM %s.%s FINAL%s ORDER BY ended_at DESC%s FORMAT JSONEachRow",
+		s.database, clickHouseSessionsTable, clickHouseWhere(filter, "ended_at", ""), clickHouseLimit(filter))
 
 	payload, err := s.exec(ctx, query, nil)
 	if err != nil {

@@ -469,9 +469,9 @@ function ledgerTable(items) {
 
 // One row per call. Clicking it opens that call, selected inside its session
 // so the turns around it are one scroll away.
-function requestRow(e) {
+function requestRow(e, live) {
   return `
-    <tr class="clickable" data-session="${esc(e.session_id || "")}" data-request="${esc(e.id || "")}">
+    <tr class="clickable ${live ? "live" : ""}" data-session="${esc(e.session_id || "")}" data-request="${esc(e.id || "")}">
       <td class="mono">${clock(e.created_at)}</td>
       <td>
         <div class="session-name">
@@ -523,12 +523,27 @@ function requestTable() {
   const rows = visibleRequests();
   if (!rows.length) return emptyState("No request matches these filters");
   const shown = rows.slice(0, visibleLimit);
+  const latest = latestRequestIds(rows);
   return `<div class="table-wrap"><table class="session-list">
     <thead><tr>
       <th>Time</th><th>Session</th><th class="num">Tokens in / out</th><th class="num">Cost</th>
       <th class="num">TTFB</th><th>Tools &amp; MCP</th><th>Files</th><th>Sensitive</th><th>Status</th>
     </tr></thead>
-    <tbody>${shown.map(requestRow).join("")}</tbody></table></div>${showMore(rows.length, shown.length)}`;
+    <tbody>${shown.map((e) => requestRow(e, latest.has(e.id) && isActive(e.session_id))).join("")}</tbody></table></div>${showMore(rows.length, shown.length)}`;
+}
+
+// A session shows one live row at a time: the request that answers "what is
+// this session doing right now" is its newest, and older calls from the same
+// session going green too would just repeat that answer down the table.
+function latestRequestIds(rowsNewestFirst) {
+  const seen = new Set();
+  const ids = new Set();
+  for (const e of rowsNewestFirst) {
+    if (!e.session_id || seen.has(e.session_id)) continue;
+    seen.add(e.session_id);
+    ids.add(e.id);
+  }
+  return ids;
 }
 
 /* --- AI traffic ----------------------------------------------------------- */
@@ -1562,8 +1577,11 @@ function openTrafficStream() {
 
 function refreshLiveDots() {
   let changed = false;
+  // In the Requests view a session can own several rows; only the newest one
+  // stands for it, so it is the only one this recomputes as "live" here too.
+  const latest = trafficView === "requests" ? latestRequestIds(visibleRequests()) : null;
   $$("[data-session]").forEach((row) => {
-    const live = isActive(row.dataset.session);
+    const live = isActive(row.dataset.session) && (!latest || latest.has(row.dataset.request));
     if (row.classList.contains("live") !== live) changed = true;
     row.classList.toggle("live", live);
     const dot = $(".dot", row);
