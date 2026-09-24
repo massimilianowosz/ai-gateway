@@ -506,8 +506,13 @@ function visibleRequests() {
       if (statusFilter === "ok" && failed) return false;
       if (statusFilter === "flagged" && !(e.findings || []).length) return false;
       if (!q) return true;
-      return [e.session_id, agentName(e.agent, e.agent_via), e.model, modelName(e.model), e.provider, e.error_message]
-        .join(" ").toLowerCase().includes(q);
+      return [
+        e.session_id, agentName(e.agent, e.agent_via), e.model, modelName(e.model), e.provider, e.error_message,
+        ...(e.tools || []).map((t) => t.tool),
+        ...(e.tools || []).map((t) => t.server),
+        ...(e.files || []).map((f) => f.path),
+        ...(e.findings || []).map(findingLabel),
+      ].join(" ").toLowerCase().includes(q);
     });
 }
 
@@ -517,12 +522,13 @@ function requestTable() {
   }
   const rows = visibleRequests();
   if (!rows.length) return emptyState("No request matches these filters");
+  const shown = rows.slice(0, visibleLimit);
   return `<div class="table-wrap"><table class="session-list">
     <thead><tr>
       <th>Time</th><th>Session</th><th class="num">Tokens in / out</th><th class="num">Cost</th>
       <th class="num">TTFB</th><th>Tools &amp; MCP</th><th>Files</th><th>Sensitive</th><th>Status</th>
     </tr></thead>
-    <tbody>${rows.map(requestRow).join("")}</tbody></table></div>`;
+    <tbody>${shown.map(requestRow).join("")}</tbody></table></div>${showMore(rows.length, shown.length)}`;
 }
 
 /* --- AI traffic ----------------------------------------------------------- */
@@ -574,6 +580,13 @@ let trafficView = "sessions";
 let sessionQuery = "";
 let modelFilter = "";
 let statusFilter = "";
+// How many rows of the current, filtered list are rendered. Hundreds of rows
+// in one <table> is what made the page heavy; "Show more" grows this instead
+// of ever rendering the whole list at once. Reset wherever the list itself
+// changes meaning — a new filter, search or view — so the reader always
+// starts again from the newest row.
+const VISIBLE_STEP = 50;
+let visibleLimit = VISIBLE_STEP;
 
 const currentRange = () => RANGES.find((r) => r.id === rangeId) || RANGES[0];
 
@@ -582,6 +595,7 @@ const currentRange = () => RANGES.find((r) => r.id === rangeId) || RANGES[0];
 const ANALYTICS_RANGE = RANGES.find((r) => r.id === "24h");
 
 async function renderTraffic() {
+  visibleLimit = VISIBLE_STEP;
   const range = currentRange();
   const since = new Date(Date.now() - range.ms).toISOString();
 
@@ -652,7 +666,7 @@ async function renderTraffic() {
             <p id="traffic-view-hint">${trafficView === "sessions" ? "Updating live \u00b7 click a session for its turns" : "Every call, newest first \u00b7 click one to open it"}</p>
           </div>
           <div class="table-filters">
-            <input id="session-search" class="filter-input" type="search" placeholder="Search\u2026" value="${esc(sessionQuery)}">
+            <input id="session-search" class="filter-input" type="search" placeholder="Search sessions, tools, files, sensitive data\u2026" value="${esc(sessionQuery)}">
             <select id="model-filter" class="filter-input">
               <option value="">All models</option>
               ${(() => {
@@ -688,18 +702,19 @@ function bindTrafficControls() {
   if (range) range.onchange = () => { rangeId = range.value; navigate("traffic"); };
 
   const search = $("#session-search");
-  if (search) search.oninput = () => { sessionQuery = search.value; repaintSessions(); };
+  if (search) search.oninput = () => { sessionQuery = search.value; visibleLimit = VISIBLE_STEP; repaintSessions(); };
 
   const model = $("#model-filter");
-  if (model) model.onchange = () => { modelFilter = model.value; repaintSessions(); };
+  if (model) model.onchange = () => { modelFilter = model.value; visibleLimit = VISIBLE_STEP; repaintSessions(); };
 
   const status = $("#status-filter");
-  if (status) status.onchange = () => { statusFilter = status.value; repaintSessions(); };
+  if (status) status.onchange = () => { statusFilter = status.value; visibleLimit = VISIBLE_STEP; repaintSessions(); };
 
   // Two views of the same window and filters: sessions answer "what did this
   // agent do", requests answer "which calls, across everything".
   $$("[data-traffic-view]").forEach((b) => (b.onclick = () => {
     trafficView = b.dataset.trafficView;
+    visibleLimit = VISIBLE_STEP;
     $$("[data-traffic-view]").forEach((x) => x.classList.toggle("active", x === b));
     const hint = $("#traffic-view-hint");
     if (hint) hint.textContent = trafficView === "sessions"
@@ -1304,8 +1319,13 @@ function visibleSessions() {
     if (statusFilter === "ok" && Number(s.errors)) return false;
     if (statusFilter === "flagged" && !(s.findings || []).length) return false;
     if (!q) return true;
-    return [s.session_id, agentName(s.agent, s.agent_via), ...(s.models || [])]
-      .join(" ").toLowerCase().includes(q);
+    return [
+      s.session_id, agentName(s.agent, s.agent_via), ...(s.models || []),
+      ...(s.tools || []).map((t) => t.tool),
+      ...(s.mcp_servers || []).map((m) => m.server),
+      ...(s.files_read || []), ...(s.files_written || []),
+      ...(s.findings || []).map(findingLabel),
+    ].join(" ").toLowerCase().includes(q);
   });
 }
 
@@ -1316,6 +1336,7 @@ function sessionTable() {
   }
   const rows = visibleSessions();
   if (!rows.length) return emptyState("No session matches these filters");
+  const shown = rows.slice(0, visibleLimit);
 
   return `<div class="table-wrap"><table class="session-list">
     <thead><tr>
@@ -1323,7 +1344,18 @@ function sessionTable() {
       <th class="num">Cost</th><th>Tools &amp; MCP</th><th>Files</th><th>Sensitive</th>
       <th class="num">Started</th><th></th>
     </tr></thead>
-    <tbody>${rows.map(sessionRow).join("")}</tbody></table></div>`;
+    <tbody>${shown.map(sessionRow).join("")}</tbody></table></div>${showMore(rows.length, shown.length)}`;
+}
+
+// One "Show more" step at a time, never the whole remainder: a list that just
+// went from 590 to 0 rows because someone clicked once is as unreadable as
+// the wall of rows this replaces.
+function showMore(total, shown) {
+  if (shown >= total) return "";
+  return `<div class="table-more">
+    <button type="button" class="ghost" data-show-more>Show ${num(Math.min(VISIBLE_STEP, total - shown))} more</button>
+    <span class="muted">${num(shown)} of ${num(total)}</span>
+  </div>`;
 }
 
 // The caller is named where the network can name it. A resolved name is a
@@ -1485,6 +1517,8 @@ function bindSessionRows() {
   $$("[data-session]").forEach((row) => {
     if (row.dataset.session) row.onclick = () => openSession(row.dataset.session, row.dataset.request || null);
   });
+  const more = $("[data-show-more]");
+  if (more) more.onclick = () => { visibleLimit += VISIBLE_STEP; repaintSessions(); };
 }
 
 /* --- Live stream ---------------------------------------------------------- */
@@ -1622,9 +1656,16 @@ function touchSession(event, isNewTurn) {
       findings: event.findings || [],
       provisional: true,
     });
-    repaintSessions();
+    if (trafficView === "sessions") repaintSessions();
     return;
   }
+
+  // The Requests view already got its own row from onTurn's own repaint, and
+  // there data-session names the call the row is for, not a session — patching
+  // "the row for this session" there would overwrite a request row with
+  // session markup. Only the Sessions view has one row per session left to fix
+  // up, and only there does the selector below mean what it says.
+  if (trafficView !== "sessions") return;
 
   // An existing row only needs its own cells redrawn, and it has to move to
   // the top now that it is live, so the row is relocated rather than the whole
@@ -1664,7 +1705,10 @@ function onSession(session) {
 
   // A session that was already listed keeps its place: swapping one row in is
   // invisible, while re-rendering the table moves everything under the cursor.
-  const row = known && $(`[data-session="${CSS.escape(session.session_id)}"]`);
+  // Only in the Sessions view does data-session there name a session row —
+  // in the Requests view the same attribute names the call, and patching it
+  // here would overwrite a request row with session markup.
+  const row = known && trafficView === "sessions" && $(`[data-session="${CSS.escape(session.session_id)}"]`);
   if (row) {
     row.outerHTML = sessionRow(session);
     bindSessionRows();
@@ -2399,17 +2443,17 @@ async function renderWatchlist() {
         <div class="card-head"><h2>Add a term</h2></div>
         <form id="watchlist-form" class="stack-form">
           <label>Reported as
-            <input name="label" required maxlength="60" placeholder="CEO mobile" />
+            <input name="label" required maxlength="60" placeholder="Finance director" />
             <span class="field-hint">The finding is shown under this name, so the value itself stays out of the console.</span>
           </label>
           <label>Pattern
-            <input name="pattern" required maxlength="200" placeholder="+39 333 1234567" />
+            <input name="pattern" required maxlength="200" placeholder="Jane Doe" />
             <span class="field-hint">Matched as written, case-insensitive. Use <code>*</code> for any run of characters within a word.</span>
           </label>
           <div class="pattern-help">
-            <div><code>*assimilia*</code><span>anywhere inside a word</span></div>
-            <div><code>*.pippo@relatech.com</code><span>any prefix on that address</span></div>
-            <div><code>Mario Rossi</code><span>the whole phrase only</span></div>
+            <div><code>*doe*</code><span>anywhere inside a word</span></div>
+            <div><code>*@example.com</code><span>any address on that domain</span></div>
+            <div><code>Jane Doe</code><span>the whole phrase only</span></div>
           </div>
           <p id="watchlist-error" class="error"></p>
           <button type="submit" class="primary">Add to watchlist</button>
